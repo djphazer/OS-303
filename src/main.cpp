@@ -6,15 +6,20 @@ const int PINPAIRS = NUMPINS / 2;
 void setup() {
   Serial.begin(9600);
   for (int i = 0; i <= NUMPINS; ++i) {
-    pinMode(i, INPUT);
+    pinMode(i, OUTPUT);
   }
 }
 
 void loop() {
-  for (int i = 0; i <= PINPAIRS; ++i) {
-    Serial.printf("%2d = 0x%4x  | %2d = 0x%4x \n", i, analogRead(i),
-                  i + PINPAIRS, analogRead(i + PINPAIRS));
+  int loop_count = 0;
+
+  for (int i = 0; i <= NUMPINS; ++i) {
+    Serial.printf("flashing pin# %d\n", i);
+    digitalWrite(i, HIGH);
+    delay(500);
+    digitalWrite(i, LOW);
+    delay(500);
   }
-  Serial.println();
+  Serial.printf("one cycle complete, count = %d\n", loop_count++);
   delay(1000);
 }
