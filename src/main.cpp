@@ -1,25 +1,26 @@
 #include <Arduino.h>
 
-const int NUMPINS = 44;
-const int PINPAIRS = NUMPINS / 2;
+const int MAXPIN = 45;
 
 void setup() {
   Serial.begin(9600);
-  for (int i = 0; i <= NUMPINS; ++i) {
+  for (int i = 0; i <= MAXPIN; ++i) {
     pinMode(i, OUTPUT);
   }
 }
 
 void loop() {
-  int loop_count = 0;
+  int pinnum = 0;
+  if (Serial.available()) {
+    pinnum = Serial.parseInt();
+    if (pinnum < 0) pinnum = 0;
+    if (pinnum > MAXPIN) pinnum = MAXPIN;
 
-  for (int i = 0; i <= NUMPINS; ++i) {
-    Serial.printf("flashing pin# %d\n", i);
-    digitalWrite(i, HIGH);
+    Serial.printf("Checking pin# %d\n", pinnum);
+
+    digitalWrite(pinnum, HIGH);
     delay(500);
-    digitalWrite(i, LOW);
-    delay(500);
+    digitalWrite(pinnum, LOW);
   }
-  Serial.printf("one cycle complete, count = %d\n", loop_count++);
-  delay(1000);
+  //delay(1000);
 }
