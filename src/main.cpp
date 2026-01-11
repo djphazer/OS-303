@@ -114,10 +114,10 @@ uint8_t direct_outs[] = {
 void setup() {
   Serial.begin(9600);
   for (size_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
-    pinMode(i, INPUT);
+    pinMode(INPUTS[i], INPUT);
   }
   for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
-    pinMode(i, OUTPUT);
+    pinMode(OUTPUTS[i], OUTPUT);
   }
 }
 
