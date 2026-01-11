@@ -91,10 +91,9 @@ uint8_t select_pin[4] = {
 };
 
 uint8_t direct_outs[] = {
-  PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
+  //PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
   PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
-  PI2_PIN,
-  PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
+  PI1_PIN, PI2_PIN,
 };
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
@@ -119,26 +118,28 @@ void setup() {
   for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     pinMode(OUTPUTS[i], OUTPUT);
   }
+  for (uint8_t i = 0; i < 4; ++i) {
+    digitalWrite(select_pin[i], HIGH);
+  }
+  digitalWrite(PE0_PIN, HIGH);
 }
 
 void loop() {
-  /*
-  for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
-    digitalWrite(OUTPUTS[i], HIGH);
+  for (size_t i = 0; i < ARRAY_SIZE(direct_outs); ++i) {
+    digitalWrite(direct_outs[i], HIGH);
     delay(100);
-    digitalWrite(OUTPUTS[i], LOW);
+    digitalWrite(direct_outs[i], LOW);
     delay(50);
   }
-  */
 
   for (uint8_t i = 0; i < 4; ++i) {
-    digitalWrite(select_pin[i], HIGH);
+    digitalWrite(select_pin[i], LOW);
     for (uint8_t j = 0; j < 4; ++j) {
       digitalWrite(led_data[j], HIGH);
       delay(100);
       digitalWrite(led_data[j], LOW);
       delay(50);
     }
-    digitalWrite(select_pin[i], LOW);
+    digitalWrite(select_pin[i], HIGH);
   }
 }
