@@ -90,6 +90,13 @@ uint8_t select_pin[4] = {
   PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
 };
 
+uint8_t direct_outs[] = {
+  PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
+  PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
+  PI2_PIN,
+  PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
+};
+
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 /*
  * I think PH pins are used to select which buttons/LEDs to engage using PG and PB
@@ -98,7 +105,7 @@ uint8_t select_pin[4] = {
  *
  * PA are receiving status info - selected pattern, run mode, tempo
  *
- * PI1 is Accent
+ * PI1 is Accent?
  * PI2 is Gate out
  *
  * CV Out seems more complex... a D/A converter is fed by the PD & PF pins
@@ -106,7 +113,6 @@ uint8_t select_pin[4] = {
 
 void setup() {
   Serial.begin(9600);
-
   for (size_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
     pinMode(i, INPUT);
   }
@@ -116,31 +122,35 @@ void setup() {
 }
 
 void loop() {
+  for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
+    digitalWrite(OUTPUTS[i], HIGH);
+    delay(100);
+    digitalWrite(OUTPUTS[i], LOW);
+    delay(50);
+  }
+
+  /*
   for (uint8_t i = 0; i < 16; ++i) {
     digitalWrite(select_pin[0], ((i >> 0) & 1) ? HIGH : LOW);
     digitalWrite(select_pin[1], ((i >> 1) & 1) ? HIGH : LOW);
     digitalWrite(select_pin[2], ((i >> 2) & 1) ? HIGH : LOW);
     digitalWrite(select_pin[3], ((i >> 3) & 1) ? HIGH : LOW);
-
     for (uint8_t j = 0; j < 16; ++j) {
       digitalWrite(led_data[0], ((j >> 0) & 1) ? HIGH : LOW);
       digitalWrite(led_data[1], ((j >> 1) & 1) ? HIGH : LOW);
       digitalWrite(led_data[2], ((j >> 2) & 1) ? HIGH : LOW);
       digitalWrite(led_data[3], ((j >> 3) & 1) ? HIGH : LOW);
-
       delay(100);
-
       digitalWrite(led_data[0], LOW);
       digitalWrite(led_data[1], LOW);
       digitalWrite(led_data[2], LOW);
       digitalWrite(led_data[3], LOW);
-
       delay(100);
     }
-
     digitalWrite(select_pin[0], LOW);
     digitalWrite(select_pin[1], LOW);
     digitalWrite(select_pin[2], LOW);
     digitalWrite(select_pin[3], LOW);
   }
+  */
 }
