@@ -20,7 +20,7 @@ enum PinoutDefs : uint8_t {
   PI1_PIN = 8, // Pitch data latch strobe
   PI2_PIN = 9, // Gate signal
 
-  // Ports D & F - memory address to pitch data (unused?)
+  // Ports D & F - memory address to pitch data - CV out
   PD0_PIN = 10,
   PD1_PIN = 11,
   PD2_PIN = 12,
@@ -30,7 +30,7 @@ enum PinoutDefs : uint8_t {
   PF2_PIN = 16,
   PF3_PIN = 17,
 
-  // Port E - memory address (unused?)
+  // Port E - memory address (probably unused)
   PE3_PIN = 1,
   PE2_PIN = 0,
   PE1_PIN = 19,
@@ -56,32 +56,74 @@ enum PinoutDefs : uint8_t {
   PH3_PIN = 41,
 
   // Port G - drive signals to switch board LEDs
-  PG0_LED_MUX = 42, // [1], [DEL], [DOWN], [5]
-  PG1_LED_MUX = 43, // [2], [INS], [UP], [6]
-  PG2_LED_MUX = 44, // [3], [F#], [ACCENT], [7]
-  PG3_LED_MUX = 45, // [4], [G#], [SLIDE], [8]
+  PG0_PIN = 42, // [1], [DEL], [DOWN], [5]
+  PG1_PIN = 43, // [2], [INS], [UP], [6]
+  PG2_PIN = 44, // [3], [F#], [ACCENT], [7]
+  PG3_PIN = 45, // [4], [G#], [SLIDE], [8]
 };
 
+// Ports A and B are inputs
+uint8_t INPUTS[] = {
+  PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
+  PB0_PIN, PB1_PIN, PB2_PIN, PB3_PIN,
+};
+// Ports C, D, E, and F are both ways? but unused?
+// Ports G and H are outputs
+uint8_t OUTPUTS[] = {
+  PE0_PIN, PE1_PIN, PE2_PIN, PE3_PIN,
+  PD0_PIN, PD1_PIN, PD2_PIN, PD3_PIN,
+
+  PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
+  PG0_PIN, PG1_PIN,
+  PG2_PIN, PG3_PIN,
+  PI1_PIN, PI2_PIN,
+};
+
+struct SwitchedPin {
+  uint8_t addr0, addr1, pin;
+};
+
+uint8_t led_data[4] = {
+  PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
+};
+uint8_t select_pin[4] = {
+  PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
+};
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+/*
+ * I think PH pins are used to select which buttons/LEDs to engage using PG and PB
+ * and probably other stuff, too - C# & D# buttons, which status lines to read on PA,
+ * and the Time, Pitch, Function, and Clear buttons
+ *
+ * PA are receiving status info - selected pattern, run mode, tempo
+ *
+ * PI1 is Accent
+ * PI2 is Gate out
+ *
+ * CV Out seems more complex... a D/A converter is fed by the PD & PF pins
+ */
 
 void setup() {
   Serial.begin(9600);
-  for (int i = 0; i <= MAXPIN; ++i) {
+
+  for (int i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
+    pinMode(i, INPUT);
+  }
+  for (int i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     pinMode(i, OUTPUT);
   }
 }
 
 void loop() {
-  int pinnum = 0;
-  if (Serial.available()) {
-    pinnum = Serial.parseInt();
-    if (pinnum < 0) pinnum = 0;
-    if (pinnum > MAXPIN) pinnum = MAXPIN;
-
-    Serial.printf("Checking pin# %d\n", pinnum);
-
-    digitalWrite(pinnum, HIGH);
-    delay(500);
-    digitalWrite(pinnum, LOW);
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      digitalWrite(select_pin[i], HIGH);
+      digitalWrite(led_data[j], HIGH);
+      delay(100);
+      digitalWrite(select_pin[i], LOW);
+      digitalWrite(led_data[j], LOW);
+      delay(100);
+    }
   }
-  //delay(1000);
 }
