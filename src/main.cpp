@@ -121,7 +121,6 @@ void setup() {
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWrite(select_pin[i], HIGH);
   }
-  digitalWrite(PE0_PIN, HIGH);
 }
 
 void loop() {
@@ -131,6 +130,14 @@ void loop() {
     digitalWrite(direct_outs[i], LOW);
     delay(50);
   }
+
+  // Accent seems to require PE0 & PI1...
+  digitalWrite(PE0_PIN, LOW);
+  digitalWrite(PI1_PIN, HIGH);
+  delay(100);
+  digitalWrite(PI1_PIN, LOW);
+  digitalWrite(PE0_PIN, HIGH);
+  delay(50);
 
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWrite(select_pin[i], LOW);
