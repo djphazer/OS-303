@@ -122,35 +122,23 @@ void setup() {
 }
 
 void loop() {
+  /*
   for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     digitalWrite(OUTPUTS[i], HIGH);
     delay(100);
     digitalWrite(OUTPUTS[i], LOW);
     delay(50);
   }
-
-  /*
-  for (uint8_t i = 0; i < 16; ++i) {
-    digitalWrite(select_pin[0], ((i >> 0) & 1) ? HIGH : LOW);
-    digitalWrite(select_pin[1], ((i >> 1) & 1) ? HIGH : LOW);
-    digitalWrite(select_pin[2], ((i >> 2) & 1) ? HIGH : LOW);
-    digitalWrite(select_pin[3], ((i >> 3) & 1) ? HIGH : LOW);
-    for (uint8_t j = 0; j < 16; ++j) {
-      digitalWrite(led_data[0], ((j >> 0) & 1) ? HIGH : LOW);
-      digitalWrite(led_data[1], ((j >> 1) & 1) ? HIGH : LOW);
-      digitalWrite(led_data[2], ((j >> 2) & 1) ? HIGH : LOW);
-      digitalWrite(led_data[3], ((j >> 3) & 1) ? HIGH : LOW);
-      delay(100);
-      digitalWrite(led_data[0], LOW);
-      digitalWrite(led_data[1], LOW);
-      digitalWrite(led_data[2], LOW);
-      digitalWrite(led_data[3], LOW);
-      delay(100);
-    }
-    digitalWrite(select_pin[0], LOW);
-    digitalWrite(select_pin[1], LOW);
-    digitalWrite(select_pin[2], LOW);
-    digitalWrite(select_pin[3], LOW);
-  }
   */
+
+  for (uint8_t i = 0; i < 4; ++i) {
+    digitalWrite(select_pin[i], HIGH);
+    for (uint8_t j = 0; j < 4; ++j) {
+      digitalWrite(led_data[j], HIGH);
+      delay(100);
+      digitalWrite(led_data[j], LOW);
+      delay(50);
+    }
+    digitalWrite(select_pin[i], LOW);
+  }
 }
