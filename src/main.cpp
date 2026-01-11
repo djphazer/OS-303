@@ -17,6 +17,7 @@ enum PinoutDefs : uint8_t {
   PITCHMODE_LED = PC2_PIN, // aka PC2
   FUNCTION_LED = PC3_PIN, // aka PC3
 
+  // PI1 is Clock for the CV Out flip-flop
   PI1_PIN = 8, // Pitch data latch strobe
   PI2_PIN = 9, // Gate signal
 
@@ -104,7 +105,7 @@ uint8_t direct_outs[] = {
  *
  * PA are receiving status info - selected pattern, run mode, tempo
  *
- * PI1 is Accent?
+ * PI1 is Clock for CV Out and maybe Accent?
  * PI2 is Gate out
  *
  * CV Out seems more complex... a D/A converter is fed by the PD & PF pins
@@ -123,6 +124,12 @@ void setup() {
   }
 }
 
+void Clock() {
+  digitalWrite(PI1_PIN, HIGH); // Clock
+  delay(1);
+  digitalWrite(PI1_PIN, LOW);
+}
+
 void loop() {
   for (size_t i = 0; i < ARRAY_SIZE(direct_outs); ++i) {
     digitalWrite(direct_outs[i], HIGH);
@@ -133,10 +140,10 @@ void loop() {
 
   // Accent seems to require PE0 & PI1...
   digitalWrite(PE0_PIN, LOW);
-  digitalWrite(PI1_PIN, HIGH);
+  Clock();
   delay(100);
-  digitalWrite(PI1_PIN, LOW);
   digitalWrite(PE0_PIN, HIGH);
+  Clock();
   delay(50);
 
   for (uint8_t i = 0; i < 4; ++i) {
@@ -156,6 +163,7 @@ void loop() {
   digitalWrite(PD3_PIN, HIGH);
   digitalWrite(PF0_PIN, HIGH);
   digitalWrite(PF1_PIN, HIGH);
+  Clock();
   delay(500);
   digitalWrite(PD0_PIN, LOW);
   digitalWrite(PD1_PIN, LOW);
@@ -163,5 +171,6 @@ void loop() {
   digitalWrite(PD3_PIN, LOW);
   digitalWrite(PF0_PIN, LOW);
   digitalWrite(PF1_PIN, LOW);
+  Clock();
   delay(500);
 }
