@@ -67,15 +67,15 @@ uint8_t INPUTS[] = {
   PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
   PB0_PIN, PB1_PIN, PB2_PIN, PB3_PIN,
 };
-// Ports C, D, E, and F are both ways? but unused?
+// Ports C, D, E, and F are both ways?
 // Ports G and H are outputs
 uint8_t OUTPUTS[] = {
-  PE0_PIN, PE1_PIN, PE2_PIN, PE3_PIN,
+  PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
   PD0_PIN, PD1_PIN, PD2_PIN, PD3_PIN,
-
+  PE0_PIN, PE1_PIN, PE2_PIN, PE3_PIN,
+  PF0_PIN, PF1_PIN, PF2_PIN, PF3_PIN,
+  PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
   PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
-  PG0_PIN, PG1_PIN,
-  PG2_PIN, PG3_PIN,
   PI1_PIN, PI2_PIN,
 };
 
@@ -107,23 +107,40 @@ uint8_t select_pin[4] = {
 void setup() {
   Serial.begin(9600);
 
-  for (int i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
+  for (size_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
     pinMode(i, INPUT);
   }
-  for (int i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
+  for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     pinMode(i, OUTPUT);
   }
 }
 
 void loop() {
-  for (int i = 0; i < 4; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      digitalWrite(select_pin[i], HIGH);
-      digitalWrite(led_data[j], HIGH);
+  for (uint8_t i = 0; i < 16; ++i) {
+    digitalWrite(select_pin[0], ((i >> 0) & 1) ? HIGH : LOW);
+    digitalWrite(select_pin[1], ((i >> 1) & 1) ? HIGH : LOW);
+    digitalWrite(select_pin[2], ((i >> 2) & 1) ? HIGH : LOW);
+    digitalWrite(select_pin[3], ((i >> 3) & 1) ? HIGH : LOW);
+
+    for (uint8_t j = 0; j < 16; ++j) {
+      digitalWrite(led_data[0], ((j >> 0) & 1) ? HIGH : LOW);
+      digitalWrite(led_data[1], ((j >> 1) & 1) ? HIGH : LOW);
+      digitalWrite(led_data[2], ((j >> 2) & 1) ? HIGH : LOW);
+      digitalWrite(led_data[3], ((j >> 3) & 1) ? HIGH : LOW);
+
       delay(100);
-      digitalWrite(select_pin[i], LOW);
-      digitalWrite(led_data[j], LOW);
+
+      digitalWrite(led_data[0], LOW);
+      digitalWrite(led_data[1], LOW);
+      digitalWrite(led_data[2], LOW);
+      digitalWrite(led_data[3], LOW);
+
       delay(100);
     }
+
+    digitalWrite(select_pin[0], LOW);
+    digitalWrite(select_pin[1], LOW);
+    digitalWrite(select_pin[2], LOW);
+    digitalWrite(select_pin[3], LOW);
   }
 }
