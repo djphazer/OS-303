@@ -149,4 +149,19 @@ void loop() {
     }
     digitalWrite(select_pin[i], HIGH);
   }
+
+  digitalWrite(PD0_PIN, HIGH);
+  digitalWrite(PD1_PIN, HIGH);
+  digitalWrite(PD2_PIN, HIGH);
+  digitalWrite(PD3_PIN, HIGH);
+  digitalWrite(PF0_PIN, HIGH);
+  digitalWrite(PF1_PIN, HIGH);
+  delay(500);
+  digitalWrite(PD0_PIN, LOW);
+  digitalWrite(PD1_PIN, LOW);
+  digitalWrite(PD2_PIN, LOW);
+  digitalWrite(PD3_PIN, LOW);
+  digitalWrite(PF0_PIN, LOW);
+  digitalWrite(PF1_PIN, LOW);
+  delay(500);
 }
