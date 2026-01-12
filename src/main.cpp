@@ -158,8 +158,8 @@ struct PinState {
 // util functions
 void SendCV() {
   // Clock for the D/A converter chip
-  digitalWrite(PI1_PIN, HIGH);
-  digitalWrite(PI1_PIN, LOW);
+  digitalWriteFast(PI1_PIN, HIGH);
+  digitalWriteFast(PI1_PIN, LOW);
 }
 
 void SetGate(bool on) {
@@ -168,16 +168,16 @@ void SetGate(bool on) {
 
 void SetAccent(bool on) {
   // Accent seems to use PE0
-  digitalWrite(PE0_PIN, on ? LOW : HIGH);
+  digitalWriteFast(PE0_PIN, on ? LOW : HIGH);
 }
 
 void SetLed(PinPair pins, bool enable = true) {
-  digitalWrite(pins.led, enable ? HIGH : LOW);
+  digitalWriteFast(pins.led, enable ? HIGH : LOW);
 }
 void SetLed(MatrixPin pins, bool enable = true) {
-  digitalWrite(pins.led, enable ? HIGH : LOW);
+  digitalWriteFast(pins.led, enable ? HIGH : LOW);
   if (enable)
-    digitalWrite(pins.select, LOW);
+    digitalWriteFast(pins.select, LOW);
 }
 
 // --- useful pin mapping information ---
@@ -235,7 +235,7 @@ void setup() {
     pinMode(OUTPUTS[i], OUTPUT);
   }
   for (uint8_t i = 0; i < 4; ++i) {
-    digitalWrite(select_pin[i], HIGH);
+    digitalWriteFast(select_pin[i], HIGH);
   }
 }
 
@@ -248,28 +248,28 @@ void loop() {
 
   // Polling all inputs...
   // turn all LEDs off first
-  digitalWrite(select_pin[0], LOW);
-  digitalWrite(select_pin[1], LOW);
-  digitalWrite(select_pin[2], LOW);
-  digitalWrite(select_pin[3], LOW);
-  digitalWrite(PG0_PIN, LOW);
-  digitalWrite(PG1_PIN, LOW);
-  digitalWrite(PG2_PIN, LOW);
-  digitalWrite(PG3_PIN, LOW);
-  digitalWrite(select_pin[0], HIGH);
-  digitalWrite(select_pin[1], HIGH);
-  digitalWrite(select_pin[2], HIGH);
-  digitalWrite(select_pin[3], HIGH);
+  digitalWriteFast(select_pin[0], LOW);
+  digitalWriteFast(select_pin[1], LOW);
+  digitalWriteFast(select_pin[2], LOW);
+  digitalWriteFast(select_pin[3], LOW);
+  digitalWriteFast(PG0_PIN, LOW);
+  digitalWriteFast(PG1_PIN, LOW);
+  digitalWriteFast(PG2_PIN, LOW);
+  digitalWriteFast(PG3_PIN, LOW);
+  digitalWriteFast(select_pin[0], HIGH);
+  digitalWriteFast(select_pin[1], HIGH);
+  digitalWriteFast(select_pin[2], HIGH);
+  digitalWriteFast(select_pin[3], HIGH);
 
   // open each switched channel
   for (size_t i = 0; i < 4; ++i) {
-    digitalWrite(select_pin[i], LOW);
+    digitalWriteFast(select_pin[i], LOW);
     for (int j = 0; j < 4; ++j) {
       // read pins
       inputs[ 0 + i*4 + j].push(digitalRead(button_pins[j]));
       inputs[16 + i*4 + j].push(digitalRead(status_pins[j]));
     }
-    digitalWrite(select_pin[i], HIGH);
+    digitalWriteFast(select_pin[i], HIGH);
   }
 
   cv_out = 0;
@@ -306,12 +306,12 @@ void loop() {
 
     // DAC for CV Out
     uint8_t note = cv_out - 1;
-    digitalWrite(PD0_PIN, (note >> 0) & 1);
-    digitalWrite(PD1_PIN, (note >> 1) & 1);
-    digitalWrite(PD2_PIN, (note >> 2) & 1);
-    digitalWrite(PD3_PIN, (note >> 3) & 1);
-    digitalWrite(PF0_PIN, (note >> 4) & 1);
-    digitalWrite(PF1_PIN, (note >> 5) & 1);
+    digitalWriteFast(PD0_PIN, (note >> 0) & 1);
+    digitalWriteFast(PD1_PIN, (note >> 1) & 1);
+    digitalWriteFast(PD2_PIN, (note >> 2) & 1);
+    digitalWriteFast(PD3_PIN, (note >> 3) & 1);
+    digitalWriteFast(PF0_PIN, (note >> 4) & 1);
+    digitalWriteFast(PF1_PIN, (note >> 5) & 1);
     SendCV();
   }
   if (cv_out) {
