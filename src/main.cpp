@@ -119,6 +119,12 @@ void SetGate(bool on) {
   digitalWriteFast(PI2_PIN, on? HIGH : LOW);
 }
 
+void SetLed(MatrixPin pins, bool enable = true) {
+  digitalWrite(pins.select, LOW);
+  digitalWrite(pins.led, enable ? HIGH : LOW);
+  digitalWrite(pins.select, HIGH);
+}
+
 //
 // --- useful pin information ---
 //
@@ -213,22 +219,28 @@ void loop() {
 
     // echo the buttons with the LEDs
     for (int j = 0; j < 4; ++j) {
-      digitalWrite(button_led_pairs[j].led, !buttonstate[j]);
+      digitalWrite(button_led_pairs[j].led, buttonstate[j]);
     }
 
-    digitalWrite(select_pin[i], HIGH); // hold values
+    //digitalWrite(select_pin[i], HIGH); // hold values
   }
 
   // DAC for CV Out
   // sending a ramp up as test
-  digitalWrite(PD0_PIN, (ticks >> 0) & 1);
-  digitalWrite(PD1_PIN, (ticks >> 1) & 1);
-  digitalWrite(PD2_PIN, (ticks >> 2) & 1);
-  digitalWrite(PD3_PIN, (ticks >> 3) & 1);
-  digitalWrite(PF0_PIN, (ticks >> 4) & 1);
-  digitalWrite(PF1_PIN, (ticks >> 5) & 1);
+  int note = uint32_t(ticks * 2.5f) & 0x1f;
+  digitalWrite(PD0_PIN, (note >> 0) & 1);
+  digitalWrite(PD1_PIN, (note >> 1) & 1);
+  digitalWrite(PD2_PIN, (note >> 2) & 1);
+  digitalWrite(PD3_PIN, (note >> 3) & 1);
+  digitalWrite(PF0_PIN, (note >> 4) & 1);
+  digitalWrite(PF1_PIN, (note >> 5) & 1);
   SendCV();
 
+  // pulse
+  SetGate(true);
+  delay(20);
+  SetGate(false);
+
   ++ticks;
-  delay(1);
+  delay(200);
 }
