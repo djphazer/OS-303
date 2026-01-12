@@ -194,7 +194,7 @@ const uint8_t direct_leds[] = {
   PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
 };
 
-const MatrixPin buttonLeds[16] = {
+const MatrixPin switched_leds[16] = {
   // select,  LED,   pitch, Button,
   {PH0_PIN, PG0_PIN,  1, C_KEY}, // [1] key, C
   {PH0_PIN, PG1_PIN,  3, D_KEY}, // [2] key, D
@@ -216,7 +216,8 @@ const MatrixPin buttonLeds[16] = {
   {PH3_PIN, PG2_PIN,  7, FSHARP_KEY}, // F#
   {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
 };
-const PinPair extraButtonLeds[4] = {
+const PinPair main_leds[4] = {
+  // led,           button,     pitch
   {TIMEMODE_LED,    TIME_KEY,   0},
   {ASHARP_LED,      ASHARP_KEY, 11},
   {PITCHMODE_LED,   PITCH_KEY,  0},
@@ -229,7 +230,7 @@ static constexpr uint16_t BEAT_MS = (60000 / TEMPO) / 4;
 void setup() {
   Serial.begin(9600);
   for (size_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
-    pinMode(INPUTS[i], INPUT);
+    pinMode(INPUTS[i], INPUT); // pullup?
   }
   for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     pinMode(OUTPUTS[i], OUTPUT);
@@ -243,69 +244,86 @@ void loop() {
   static elapsedMillis timer = 0;
   static uint16_t ticks = 0;
   static PinState inputs[32];
-  static uint8_t cv_out = 0;
+  static PinState extra_ins[4];
+  static uint16_t cv_out = 0; // bitmask
+  static uint16_t note_count = 0;
   //static uint8_t octave = 0;
 
-  // Polling all inputs...
-  // turn all LEDs off first
-  digitalWriteFast(select_pin[0], LOW);
-  digitalWriteFast(select_pin[1], LOW);
-  digitalWriteFast(select_pin[2], LOW);
-  digitalWriteFast(select_pin[3], LOW);
-  digitalWriteFast(PG0_PIN, LOW);
-  digitalWriteFast(PG1_PIN, LOW);
-  digitalWriteFast(PG2_PIN, LOW);
-  digitalWriteFast(PG3_PIN, LOW);
-  digitalWriteFast(select_pin[0], HIGH);
-  digitalWriteFast(select_pin[1], HIGH);
-  digitalWriteFast(select_pin[2], HIGH);
-  digitalWriteFast(select_pin[3], HIGH);
+  // Poll all inputs... but not every tick?
+  if ((ticks & 0x0f) == 0x0) {
+    // turn all LEDs off first
+    digitalWriteFast(PG0_PIN, LOW);
+    digitalWriteFast(PG1_PIN, LOW);
+    digitalWriteFast(PG2_PIN, LOW);
+    digitalWriteFast(PG3_PIN, LOW);
+    digitalWriteFast(select_pin[0], LOW);
+    digitalWriteFast(select_pin[1], LOW);
+    digitalWriteFast(select_pin[2], LOW);
+    digitalWriteFast(select_pin[3], LOW);
+    digitalWriteFast(select_pin[0], HIGH);
+    digitalWriteFast(select_pin[1], HIGH);
+    digitalWriteFast(select_pin[2], HIGH);
+    digitalWriteFast(select_pin[3], HIGH);
 
-  // open each switched channel
-  for (size_t i = 0; i < 4; ++i) {
-    digitalWriteFast(select_pin[i], LOW);
-    for (int j = 0; j < 4; ++j) {
-      // read pins
-      inputs[ 0 + i*4 + j].push(digitalRead(button_pins[j]));
-      inputs[16 + i*4 + j].push(digitalRead(status_pins[j]));
+    // open each switched channel
+    for (size_t i = 0; i < 4; ++i) {
+      digitalWriteFast(select_pin[i], LOW);
+      for (int j = 0; j < 4; ++j) {
+        // read pins
+        inputs[ 0 + i*4 + j].push(digitalRead(button_pins[j]));
+        inputs[16 + i*4 + j].push(digitalRead(status_pins[j]));
+      }
+      digitalWriteFast(select_pin[i], HIGH);
     }
-    digitalWriteFast(select_pin[i], HIGH);
+  }
+
+  for (size_t i = 0; i < 4; ++i) {
+    extra_ins[i].push(digitalRead(status_pins[i]));
   }
 
   cv_out = 0;
   // set LEDs last - leaves certain select pins low
-  for (size_t i = 0; i < ARRAY_SIZE(buttonLeds); ++i) {
-    if (inputs[i].rising()) {
-      Serial.printf("Button index: %u\n", i);
-    }
-    if (inputs[i + 16].rising()) {
-      Serial.printf("Status index: %u\n", i + 16);
-    }
+  for (size_t i = 0; i < ARRAY_SIZE(switched_leds); ++i) {
+    // DEBUG //
+    if (inputs[i].rising())    { Serial.printf("Button index: %u\n", i); }
+    if (inputs[i+16].rising()) { Serial.printf("Status index: %u\n", i + 16); }
+    // DEBUG //
 
-    const bool button_held = inputs[buttonLeds[i].button].held();
-    SetLed(buttonLeds[i], button_held);
-    if (button_held && buttonLeds[i].pitch > cv_out)
-      cv_out = buttonLeds[i].pitch;
+    const bool button_held = inputs[switched_leds[i].button].held();
+    SetLed(switched_leds[i], button_held);
+
+    // -- key-handlers --
+    if (button_held)
+      cv_out |= 1 << switched_leds[i].pitch;
   }
   // extra non-switched LEDs
   for (size_t i = 0; i < 4; ++i) {
-    const bool button_held = inputs[extraButtonLeds[i].button].held();
-    SetLed(extraButtonLeds[i], button_held);
-    if (button_held && extraButtonLeds[i].pitch > cv_out)
-      cv_out = extraButtonLeds[i].pitch;
+    const bool button_held = inputs[main_leds[i].button].held();
+    SetLed(main_leds[i], button_held);
+
+    // -- key-handlers --
+    if (button_held)
+      cv_out |= 1 << main_leds[i].pitch;
   }
 
   bool send_note = false;
   if (timer > BEAT_MS) {
+    Serial.printf("clock stuff? %u %u %u %u\n",
+        extra_ins[0].held(),
+        extra_ins[1].held(),
+        extra_ins[2].held(),
+        extra_ins[3].held() );
+
     timer = 0;
     send_note = true;
   }
-  if (cv_out && send_note) {
+  if ((cv_out>>1) && send_note) {
     // Accent on and off for testing
     SetAccent(ticks & 1); // basically random
 
     // DAC for CV Out
-    uint8_t note = cv_out - 1;
+    uint8_t note = 0;
+    while ((note < note_count % 13) && (cv_out >> note)) ++note;
     digitalWriteFast(PD0_PIN, (note >> 0) & 1);
     digitalWriteFast(PD1_PIN, (note >> 1) & 1);
     digitalWriteFast(PD2_PIN, (note >> 2) & 1);
@@ -313,6 +331,8 @@ void loop() {
     digitalWriteFast(PF0_PIN, (note >> 4) & 1);
     digitalWriteFast(PF1_PIN, (note >> 5) & 1);
     SendCV();
+
+    ++note_count;
   }
   if (cv_out) {
     // gate pulse at 50%
