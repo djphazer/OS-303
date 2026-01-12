@@ -99,16 +99,11 @@ const uint8_t OUTPUTS[] = {
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 struct PinPair {
-  uint8_t led, button;
+  uint8_t button, led;
 };
 struct MatrixPin {
   uint8_t select, led, button;
 };
-
-bool Input(MatrixPin pair) {
-  digitalWriteFast(pair.select, LOW);
-  return digitalRead(pair.button);
-}
 
 void SendCV() {
   digitalWrite(PI1_PIN, HIGH);
@@ -119,10 +114,16 @@ void SetGate(bool on) {
   digitalWriteFast(PI2_PIN, on? HIGH : LOW);
 }
 
+void SetAccent(bool on) {
+  // Accent seems to use PE0
+  digitalWrite(PE0_PIN, on ? LOW : HIGH);
+  SendCV();
+}
+
 void SetLed(MatrixPin pins, bool enable = true) {
-  digitalWrite(pins.select, LOW);
   digitalWrite(pins.led, enable ? HIGH : LOW);
-  digitalWrite(pins.select, HIGH);
+  if (enable)
+    digitalWrite(pins.select, LOW);
 }
 
 //
@@ -131,16 +132,17 @@ void SetLed(MatrixPin pins, bool enable = true) {
 const uint8_t select_pin[4] = {
   PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
 };
-
 const PinPair button_led_pairs[4] = {
     {PB0_PIN, PG0_PIN},
     {PB1_PIN, PG1_PIN},
     {PB2_PIN, PG2_PIN},
     {PB3_PIN, PG3_PIN},
 };
-
 const uint8_t direct_leds[] = {
   PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
+};
+const uint8_t status_pins[] = {
+  PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
 };
 
 /*
@@ -150,6 +152,7 @@ const uint8_t direct_leds[] = {
   PG3_PIN = 45, // [4], [G#], [SLIDE], [8]
 */
 const MatrixPin buttonLeds[] = {
+  // select,  LED,   Button
   {PH0_PIN, PG0_PIN, PB0_PIN}, // [1] key, C
   {PH0_PIN, PG1_PIN, PB1_PIN}, // [2] key, D
   {PH0_PIN, PG2_PIN, PB2_PIN}, // [3] key, E
@@ -184,63 +187,60 @@ void setup() {
   }
 }
 
+static constexpr uint16_t TEMPO = 120; // BPM
+static constexpr uint16_t BEAT_MS = (60000 / TEMPO);
+
 void loop() {
   static uint32_t ticks = 0;
-  /*
-  for (size_t i = 0; i < ARRAY_SIZE(direct_leds); ++i) {
-    digitalWrite(direct_leds[i], HIGH);
-    delay(100);
-    digitalWrite(direct_leds[i], LOW);
-    delay(50);
-  }
-  */
+  static uint16_t buttonstate = 0;
+  static uint16_t ledstate = 0;
+  static uint16_t status_state = 0;
 
-  // Accent seems to use PE0
-  /*
-  digitalWrite(PE0_PIN, LOW);
-  SendCV();
-  delay(100);
-  digitalWrite(PE0_PIN, HIGH);
-  SendCV();
-  delay(50);
-  */
-
-  // switched LED matrix here
-  // Starting to look like we gotta read and write each matrix cell at the same time
+  // polling loop for switched LED matrix
+  // Looks like we gotta read buttons and write LEDs at the same time
+  buttonstate = 0;
+  status_state = 0;
   for (size_t i = 0; i < ARRAY_SIZE(select_pin); ++i) {
-    bool buttonstate[4] = {false};
-
-    // read buttons
+    // open each channel
+    digitalWrite(select_pin[0], (i==0)?LOW:HIGH);
+    digitalWrite(select_pin[1], (i==1)?LOW:HIGH);
+    digitalWrite(select_pin[2], (i==2)?LOW:HIGH);
+    digitalWrite(select_pin[3], (i==3)?LOW:HIGH);
     for (int j = 0; j < 4; ++j) {
-      buttonstate[j] = digitalRead(button_led_pairs[j].button);
+      // read buttons and status pins
+      buttonstate |= digitalRead(button_led_pairs[j].button) << (i*4 + j);
+      status_state |= digitalRead(status_pins[j]) << (i*4 + j);
     }
-
-    digitalWrite(select_pin[i], LOW); // open channel for new values
-
-    // echo the buttons with the LEDs
-    for (int j = 0; j < 4; ++j) {
-      digitalWrite(button_led_pairs[j].led, buttonstate[j]);
-    }
-
-    //digitalWrite(select_pin[i], HIGH); // hold values
+    digitalWrite(select_pin[i], HIGH);
   }
 
-  // DAC for CV Out
-  // sending a ramp up as test
-  int note = uint32_t(ticks * 2.5f) & 0x1f;
-  digitalWrite(PD0_PIN, (note >> 0) & 1);
-  digitalWrite(PD1_PIN, (note >> 1) & 1);
-  digitalWrite(PD2_PIN, (note >> 2) & 1);
-  digitalWrite(PD3_PIN, (note >> 3) & 1);
-  digitalWrite(PF0_PIN, (note >> 4) & 1);
-  digitalWrite(PF1_PIN, (note >> 5) & 1);
-  SendCV();
+  // set LEDs last - leaves select pins low
+  for (size_t i = 0; i < ARRAY_SIZE(buttonLeds); ++i) {
+    SetLed(buttonLeds[i], buttonstate & (1 << i));
+  }
 
-  // pulse
-  SetGate(true);
-  delay(20);
-  SetGate(false);
+  if (status_state) {
+    // Accent on and off for testing
+    if ((ticks & 0x20) == 0x20) SetAccent(true);
+    if ((ticks & 0x2f) == 0x00) SetAccent(false);
+
+    // DAC for CV Out
+    // sending a ramp up as test
+    int note = uint32_t(ticks * 2.5f) & 0x1f;
+    digitalWrite(PD0_PIN, (note >> 0) & 1);
+    digitalWrite(PD1_PIN, (note >> 1) & 1);
+    digitalWrite(PD2_PIN, (note >> 2) & 1);
+    digitalWrite(PD3_PIN, (note >> 3) & 1);
+    digitalWrite(PF0_PIN, (note >> 4) & 1);
+    digitalWrite(PF1_PIN, (note >> 5) & 1);
+    SendCV();
+
+    // gate pulse
+    SetGate(true);
+    delay(BEAT_MS / 8);
+    SetGate(false);
+    delay(BEAT_MS / 8);
+  }
 
   ++ticks;
-  delay(200);
 }
