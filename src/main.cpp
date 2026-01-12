@@ -198,18 +198,18 @@ struct Button {
 };
 
 static constexpr uint16_t TEMPO = 120; // BPM
-static constexpr uint16_t BEAT_MS = (60000 / TEMPO);
+static constexpr uint16_t BEAT_MS = (60000 / TEMPO) / 4;
 
 void loop() {
+  static elapsedMillis timer = 0;
   static uint32_t ticks = 0;
   static Button buttons[32];
-  static uint16_t status_state = 0;
   static uint8_t cv_out = 0;
-  static uint8_t octave = 0;
+  static bool gate_on = false;
+  //static uint8_t octave = 0;
 
   // polling loop for switched LED matrix
   // Looks like we gotta read buttons and write LEDs at the same time
-  status_state = 0;
   cv_out = 0;
   for (size_t i = 0; i < ARRAY_SIZE(select_pin); ++i) {
     // open each channel
@@ -228,10 +228,10 @@ void loop() {
   // set LEDs last - leaves select pins low
   for (size_t i = 0; i < ARRAY_SIZE(buttonLeds); ++i) {
     if (buttons[i].rising()) {
-      Serial.printf("Button index: %u", i);
+      Serial.printf("Button index: %u\n", i);
     }
     if (buttons[i + 16].rising()) {
-      Serial.printf("Status index: %u", i + 16);
+      Serial.printf("Status index: %u\n", i + 16);
     }
 
     SetLed(buttonLeds[i], buttons[i].held());
@@ -239,7 +239,12 @@ void loop() {
       cv_out = buttonLeds[i].pitch;
   }
 
-  if (cv_out) {
+  bool send_note = false;
+  if (timer > BEAT_MS) {
+    timer = 0;
+    send_note = true;
+  }
+  if (cv_out && send_note) {
     // Accent on and off for testing
     if ((ticks & 0x20) == 0x20) SetAccent(true);
     if ((ticks & 0x2f) == 0x00) SetAccent(false);
@@ -253,12 +258,10 @@ void loop() {
     digitalWrite(PF0_PIN, (note >> 4) & 1);
     digitalWrite(PF1_PIN, (note >> 5) & 1);
     SendCV();
-
-    // gate pulse
-    SetGate(true);
-    delay(BEAT_MS / 8);
-    SetGate(false);
-    delay(BEAT_MS / 8);
+  }
+  if (cv_out) {
+    // gate pulse at 50%
+    SetGate(timer < BEAT_MS / 2);
   }
 
   ++ticks;
