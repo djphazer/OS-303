@@ -139,7 +139,7 @@ enum InputIndex : uint8_t {
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 struct PinPair {
-  uint8_t button, led;
+  uint8_t led, button, pitch;
 };
 struct MatrixPin {
   uint8_t select, led, pitch;
@@ -171,6 +171,9 @@ void SetAccent(bool on) {
   digitalWrite(PE0_PIN, on ? LOW : HIGH);
 }
 
+void SetLed(PinPair pins, bool enable = true) {
+  digitalWrite(pins.led, enable ? HIGH : LOW);
+}
 void SetLed(MatrixPin pins, bool enable = true) {
   digitalWrite(pins.led, enable ? HIGH : LOW);
   if (enable)
@@ -213,6 +216,12 @@ const MatrixPin buttonLeds[16] = {
   {PH3_PIN, PG2_PIN,  7, FSHARP_KEY}, // F#
   {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
 };
+const PinPair extraButtonLeds[4] = {
+  {TIMEMODE_LED,    TIME_KEY,   0},
+  {ASHARP_LED,      ASHARP_KEY, 11},
+  {PITCHMODE_LED,   PITCH_KEY,  0},
+  {FUNCTION_LED,    FUNCTION_KEY,   0},
+};
 
 static constexpr uint16_t TEMPO = 90; // BPM
 static constexpr uint16_t BEAT_MS = (60000 / TEMPO) / 4;
@@ -237,16 +246,20 @@ void loop() {
   static uint8_t cv_out = 0;
   //static uint8_t octave = 0;
 
-  // polling loop for switched LED matrix
-  // Looks like we gotta read buttons and write LEDs at the same time
+  // Poll all inputs
+  // turn all LED pins off first
+  digitalWrite(PG0_PIN, LOW);
+  digitalWrite(PG1_PIN, LOW);
+  digitalWrite(PG2_PIN, LOW);
+  digitalWrite(PG3_PIN, LOW);
   for (size_t i = 0; i < 4; ++i) {
-    // open each channel
+    // open each switched channel
     digitalWrite(select_pin[0], (i==0)?LOW:HIGH);
     digitalWrite(select_pin[1], (i==1)?LOW:HIGH);
     digitalWrite(select_pin[2], (i==2)?LOW:HIGH);
     digitalWrite(select_pin[3], (i==3)?LOW:HIGH);
     for (int j = 0; j < 4; ++j) {
-      // read buttons and status pins
+      // read pins
       inputs[ 0 + i*4 + j].push(digitalRead(button_pins[j]));
       inputs[16 + i*4 + j].push(digitalRead(status_pins[j]));
     }
@@ -263,10 +276,17 @@ void loop() {
       Serial.printf("Status index: %u\n", i + 16);
     }
 
-    bool button_held = inputs[buttonLeds[i].button].held();
+    const bool button_held = inputs[buttonLeds[i].button].held();
     SetLed(buttonLeds[i], button_held);
     if (button_held && buttonLeds[i].pitch > cv_out)
       cv_out = buttonLeds[i].pitch;
+  }
+  // extra non-switched LEDs
+  for (size_t i = 0; i < 4; ++i) {
+    const bool button_held = inputs[extraButtonLeds[i].button].held();
+    SetLed(extraButtonLeds[i], button_held);
+    if (button_held && extraButtonLeds[i].pitch > cv_out)
+      cv_out = extraButtonLeds[i].pitch;
   }
 
   bool send_note = false;
