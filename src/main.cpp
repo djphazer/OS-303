@@ -102,7 +102,7 @@ struct PinPair {
   uint8_t button, led;
 };
 struct MatrixPin {
-  uint8_t select, led, button;
+  uint8_t select, led, button, pitch;
 };
 
 void SendCV() {
@@ -153,25 +153,25 @@ const uint8_t status_pins[] = {
 */
 const MatrixPin buttonLeds[] = {
   // select,  LED,   Button
-  {PH0_PIN, PG0_PIN, PB0_PIN}, // [1] key, C
-  {PH0_PIN, PG1_PIN, PB1_PIN}, // [2] key, D
-  {PH0_PIN, PG2_PIN, PB2_PIN}, // [3] key, E
-  {PH0_PIN, PG3_PIN, PB3_PIN}, // [4] key, F
+  {PH0_PIN, PG0_PIN, PB0_PIN, 1}, // [1] key, C
+  {PH0_PIN, PG1_PIN, PB1_PIN, 3}, // [2] key, D
+  {PH0_PIN, PG2_PIN, PB2_PIN, 5}, // [3] key, E
+  {PH0_PIN, PG3_PIN, PB3_PIN, 6}, // [4] key, F
 
-  {PH1_PIN, PG0_PIN, PB0_PIN}, // [5] key, G
-  {PH1_PIN, PG1_PIN, PB1_PIN}, // [6] key, A
-  {PH1_PIN, PG2_PIN, PB2_PIN}, // [7] key, B
-  {PH1_PIN, PG3_PIN, PB3_PIN}, // [8] key, C
+  {PH1_PIN, PG0_PIN, PB0_PIN, 8}, // [5] key, G
+  {PH1_PIN, PG1_PIN, PB1_PIN, 10}, // [6] key, A
+  {PH1_PIN, PG2_PIN, PB2_PIN, 12}, // [7] key, B
+  {PH1_PIN, PG3_PIN, PB3_PIN, 13}, // [8] key, C
 
   {PH2_PIN, PG0_PIN, PB0_PIN}, // [9] or [DOWN]
   {PH2_PIN, PG1_PIN, PB1_PIN}, // [0] or [UP]
   {PH2_PIN, PG2_PIN, PB2_PIN}, // [100] or [ACCENT]
   {PH2_PIN, PG3_PIN, PB3_PIN}, // [200] or [SLIDE]
 
-  {PH3_PIN, PG0_PIN, PB0_PIN}, // [DEL] or C#
-  {PH3_PIN, PG1_PIN, PB1_PIN}, // [INS] or D#
-  {PH3_PIN, PG2_PIN, PB2_PIN}, // F#
-  {PH3_PIN, PG3_PIN, PB3_PIN}, // G#
+  {PH3_PIN, PG0_PIN, PB0_PIN, 2}, // [DEL] or C#
+  {PH3_PIN, PG1_PIN, PB1_PIN, 4}, // [INS] or D#
+  {PH3_PIN, PG2_PIN, PB2_PIN, 7}, // F#
+  {PH3_PIN, PG3_PIN, PB3_PIN, 9}, // G#
 };
 
 void setup() {
@@ -187,19 +187,30 @@ void setup() {
   }
 }
 
+struct Button {
+  uint8_t state = 0; // shiftreg
+  void push(bool high) {
+    state = (state << 1) | high;
+  }
+  const bool rising() const { return state == 0x01; }
+  const bool falling() const { return state == 0xfe; }
+  const bool held() const { return state != 0x00; }
+};
+
 static constexpr uint16_t TEMPO = 120; // BPM
 static constexpr uint16_t BEAT_MS = (60000 / TEMPO);
 
 void loop() {
   static uint32_t ticks = 0;
-  static uint16_t buttonstate = 0;
-  static uint16_t ledstate = 0;
+  static Button buttons[32];
   static uint16_t status_state = 0;
+  static uint8_t cv_out = 0;
+  static uint8_t octave = 0;
 
   // polling loop for switched LED matrix
   // Looks like we gotta read buttons and write LEDs at the same time
-  buttonstate = 0;
   status_state = 0;
+  cv_out = 0;
   for (size_t i = 0; i < ARRAY_SIZE(select_pin); ++i) {
     // open each channel
     digitalWrite(select_pin[0], (i==0)?LOW:HIGH);
@@ -208,25 +219,33 @@ void loop() {
     digitalWrite(select_pin[3], (i==3)?LOW:HIGH);
     for (int j = 0; j < 4; ++j) {
       // read buttons and status pins
-      buttonstate |= digitalRead(button_led_pairs[j].button) << (i*4 + j);
-      status_state |= digitalRead(status_pins[j]) << (i*4 + j);
+      buttons[ 0 + i*4 + j].push(digitalRead(buttonLeds[i*4 + j].button));
+      buttons[16 + i*4 + j].push(digitalRead(status_pins[j]));
     }
     digitalWrite(select_pin[i], HIGH);
   }
 
   // set LEDs last - leaves select pins low
   for (size_t i = 0; i < ARRAY_SIZE(buttonLeds); ++i) {
-    SetLed(buttonLeds[i], buttonstate & (1 << i));
+    if (buttons[i].rising()) {
+      Serial.printf("Button index: %u", i);
+    }
+    if (buttons[i + 16].rising()) {
+      Serial.printf("Status index: %u", i + 16);
+    }
+
+    SetLed(buttonLeds[i], buttons[i].held());
+    if (buttons[i].held() && buttonLeds[i].pitch > cv_out)
+      cv_out = buttonLeds[i].pitch;
   }
 
-  if (status_state) {
+  if (cv_out) {
     // Accent on and off for testing
     if ((ticks & 0x20) == 0x20) SetAccent(true);
     if ((ticks & 0x2f) == 0x00) SetAccent(false);
 
     // DAC for CV Out
-    // sending a ramp up as test
-    int note = uint32_t(ticks * 2.5f) & 0x1f;
+    uint8_t note = cv_out - 1;
     digitalWrite(PD0_PIN, (note >> 0) & 1);
     digitalWrite(PD1_PIN, (note >> 1) & 1);
     digitalWrite(PD2_PIN, (note >> 2) & 1);
