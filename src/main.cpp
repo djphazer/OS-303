@@ -246,18 +246,24 @@ void loop() {
   static uint8_t cv_out = 0;
   //static uint8_t octave = 0;
 
-  // Poll all inputs
-  // turn all LED pins off first
+  // Polling all inputs...
+  // turn all LEDs off first
+  digitalWrite(select_pin[0], LOW);
+  digitalWrite(select_pin[1], LOW);
+  digitalWrite(select_pin[2], LOW);
+  digitalWrite(select_pin[3], LOW);
   digitalWrite(PG0_PIN, LOW);
   digitalWrite(PG1_PIN, LOW);
   digitalWrite(PG2_PIN, LOW);
   digitalWrite(PG3_PIN, LOW);
+  digitalWrite(select_pin[0], HIGH);
+  digitalWrite(select_pin[1], HIGH);
+  digitalWrite(select_pin[2], HIGH);
+  digitalWrite(select_pin[3], HIGH);
+
+  // open each switched channel
   for (size_t i = 0; i < 4; ++i) {
-    // open each switched channel
-    digitalWrite(select_pin[0], (i==0)?LOW:HIGH);
-    digitalWrite(select_pin[1], (i==1)?LOW:HIGH);
-    digitalWrite(select_pin[2], (i==2)?LOW:HIGH);
-    digitalWrite(select_pin[3], (i==3)?LOW:HIGH);
+    digitalWrite(select_pin[i], LOW);
     for (int j = 0; j < 4; ++j) {
       // read pins
       inputs[ 0 + i*4 + j].push(digitalRead(button_pins[j]));
