@@ -224,8 +224,6 @@ const PinPair main_leds[4] = {
   {FUNCTION_LED,    FUNCTION_KEY,   0},
 };
 
-static constexpr uint16_t TEMPO = 90; // BPM
-static constexpr uint16_t BEAT_MS = (60000 / TEMPO) / 4;
 
 void setup() {
   Serial.begin(9600);
@@ -244,9 +242,11 @@ void loop() {
   static elapsedMillis timer = 0;
   static uint16_t ticks = 0;
   static PinState inputs[32];
-  static PinState extra_ins[4];
-  static uint16_t cv_out = 0; // bitmask
+  static PinState extra_ins[8];
+  static uint16_t cv_out = 0; // bitmask of keys
   static uint16_t note_count = 0;
+  static uint16_t clk_count = 0;
+  static uint16_t beat_ms = 200;
   //static uint8_t octave = 0;
 
   // Poll all inputs... but not every tick?
@@ -277,6 +277,7 @@ void loop() {
     }
   }
 
+  // read PA and PB pins without lowering select pins
   for (size_t i = 0; i < 4; ++i) {
     extra_ins[i].push(digitalReadFast(status_pins[i]));
     extra_ins[i+4].push(digitalReadFast(button_pins[i]));
@@ -308,23 +309,38 @@ void loop() {
   }
 
   bool send_note = false;
-  if (timer > BEAT_MS) {
+
+  // DIN sync clock @ 24ppqn
+  if (extra_ins[3].rising()) {
+    ++clk_count %= 24;
+    if (clk_count == 0) {
+      // sync and send quarter notes
+      beat_ms = timer;
+      timer = 0;
+      send_note = true;
+    }
+
+    // debug
     Serial.printf("clock stuff? %u %u %u %u\n",
         extra_ins[0].held(),
         extra_ins[1].held(),
         extra_ins[2].held(),
         extra_ins[3].held() );
-
-    timer = 0;
-    send_note = true;
   }
+
   if ((cv_out>>1) && send_note) {
     // Accent on and off for testing
     SetAccent(ticks & 1); // basically random
 
     // DAC for CV Out
-    uint8_t note = 0;
-    while ((note < note_count % 13) && (cv_out >> note)) ++note;
+    uint8_t note = 1, num_notes = 0;
+    while (cv_out >> note) {
+      // I was trying to make an arpeggiator, but I'm overthinking it
+      ++note;
+      if (cv_out >> note & 1) ++num_notes;
+    }
+    --note; // max note held, zero-indexed
+
     digitalWriteFast(PD0_PIN, (note >> 0) & 1);
     digitalWriteFast(PD1_PIN, (note >> 1) & 1);
     digitalWriteFast(PD2_PIN, (note >> 2) & 1);
@@ -337,7 +353,7 @@ void loop() {
   }
   if (cv_out) {
     // gate pulse at 50%
-    SetGate(timer < BEAT_MS / 2);
+    SetGate(timer < beat_ms / 2);
   }
 
   ++ticks;
