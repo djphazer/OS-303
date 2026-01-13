@@ -17,7 +17,7 @@ enum PinoutDefs : uint8_t {
   PITCHMODE_LED = PC2_PIN,
   FUNCTION_LED = PC3_PIN,
 
-  // PI1 is Clock for the CV Out flip-flop
+  // PI1 is Clock for the CV Out flip-flop, and also enables Slide while held
   PI1_PIN = 8, // Pitch data latch strobe
   PI2_PIN = 9, // Gate signal
 
@@ -79,6 +79,7 @@ const uint8_t OUTPUTS[] = {
 
 /*
  * The PH pins are used to select which buttons/LEDs to engage using PG, PA, and PB.
+ *
  * PA are receiving status info, and a few buttons.
  * PB are switched inputs for the buttons in the switch board.
  * PG are switched outputs for the LEDs.
@@ -87,7 +88,7 @@ const uint8_t OUTPUTS[] = {
  * PD and PF are data bits for CV out, which is a 6-bit number for pitch in semitones.
  * PE0 is the Accent bit.
  *
- * PI1 is Clock for CV Out and Accent
+ * PI1 is Clock for CV Out and Accent, and also engages Slide while held
  * PI2 is Gate out
  */
 
@@ -162,10 +163,11 @@ struct PinState {
 };
 
 // util functions
-void SendCV() {
+void SendCV(bool slide = false) {
   // Clock for the D/A converter chip
+  if (slide) digitalWriteFast(PI1_PIN, LOW);
   digitalWriteFast(PI1_PIN, HIGH);
-  digitalWriteFast(PI1_PIN, LOW);
+  if (!slide) digitalWriteFast(PI1_PIN, LOW);
 }
 
 void SetGate(bool on) {
@@ -258,38 +260,36 @@ void loop() {
   static bool gate_on = false;
   //static uint8_t octave = 0;
 
-  // Poll all inputs... but not every tick?
-  if ((ticks & 0x0f) == 0x0) {
-    // turn all LEDs off first
-    digitalWriteFast(PG0_PIN, LOW);
-    digitalWriteFast(PG1_PIN, LOW);
-    digitalWriteFast(PG2_PIN, LOW);
-    digitalWriteFast(PG3_PIN, LOW);
-    digitalWriteFast(select_pin[0], LOW);
-    digitalWriteFast(select_pin[1], LOW);
-    digitalWriteFast(select_pin[2], LOW);
-    digitalWriteFast(select_pin[3], LOW);
-    digitalWriteFast(select_pin[0], HIGH);
-    digitalWriteFast(select_pin[1], HIGH);
-    digitalWriteFast(select_pin[2], HIGH);
-    digitalWriteFast(select_pin[3], HIGH);
+  // Poll all inputs...
+  // turn all LEDs off first
+  digitalWriteFast(PG0_PIN, LOW);
+  digitalWriteFast(PG1_PIN, LOW);
+  digitalWriteFast(PG2_PIN, LOW);
+  digitalWriteFast(PG3_PIN, LOW);
+  digitalWriteFast(select_pin[0], LOW);
+  digitalWriteFast(select_pin[1], LOW);
+  digitalWriteFast(select_pin[2], LOW);
+  digitalWriteFast(select_pin[3], LOW);
+  digitalWriteFast(select_pin[0], HIGH);
+  digitalWriteFast(select_pin[1], HIGH);
+  digitalWriteFast(select_pin[2], HIGH);
+  digitalWriteFast(select_pin[3], HIGH);
 
-    // open each switched channel
-    for (size_t i = 0; i < 4; ++i) {
-      digitalWriteFast(select_pin[i], LOW);
-      for (int j = 0; j < 4; ++j) {
-        // read pins
-        inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j]));
-        inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j]));
-      }
-      digitalWriteFast(select_pin[i], HIGH);
-    }
-  }
-
-  // read PA and PB pins without lowering select pins
+  // read PA and PB pins while select pins are high
   for (size_t i = 0; i < 4; ++i) {
     extra_ins[i].push(digitalReadFast(status_pins[i]));
     extra_ins[i+4].push(digitalReadFast(button_pins[i]));
+  }
+
+  // open each switched channel with select pin
+  for (size_t i = 0; i < 4; ++i) {
+    digitalWriteFast(select_pin[i], LOW);
+    for (int j = 0; j < 4; ++j) {
+      // read pins
+      inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j]));
+      inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j]));
+    }
+    digitalWriteFast(select_pin[i], HIGH);
   }
 
   cv_out = 0;
