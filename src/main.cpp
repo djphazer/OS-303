@@ -243,9 +243,8 @@ void loop() {
   static uint16_t ticks = 0;
   static PinState inputs[32];
   static PinState extra_ins[8];
-  static uint16_t cv_out = 0; // bitmask of keys
-  static uint16_t note_count = 0;
-  static uint16_t clk_count = 0;
+  static uint8_t cv_out = 0; // semitone
+  static uint8_t clk_count = 0;
   static uint16_t beat_ms = 200;
   //static uint8_t octave = 0;
 
@@ -296,7 +295,7 @@ void loop() {
 
     // -- key-handlers --
     if (button_held)
-      cv_out |= 1 << switched_leds[i].pitch;
+      cv_out = max(cv_out, switched_leds[i].pitch);
   }
   // extra non-switched LEDs
   for (size_t i = 0; i < 4; ++i) {
@@ -305,7 +304,7 @@ void loop() {
 
     // -- key-handlers --
     if (button_held)
-      cv_out |= 1 << main_leds[i].pitch;
+      cv_out = max(cv_out, main_leds[i].pitch);
   }
 
   bool send_note = false;
@@ -321,26 +320,24 @@ void loop() {
     }
 
     // debug
-    Serial.printf("clock stuff? %u %u %u %u\n",
+    Serial.printf("clock stuff? %u %u %u %u, %u %u %u %u\n",
         extra_ins[0].held(),
         extra_ins[1].held(),
         extra_ins[2].held(),
-        extra_ins[3].held() );
+        extra_ins[3].held(),
+        extra_ins[4].held(),
+        extra_ins[5].held(),
+        extra_ins[6].held(),
+        extra_ins[7].held()
+        );
   }
 
-  if ((cv_out>>1) && send_note) {
+  if (cv_out && send_note) {
     // Accent on and off for testing
     SetAccent(ticks & 1); // basically random
 
     // DAC for CV Out
-    uint8_t note = 1, num_notes = 0;
-    while (cv_out >> note) {
-      // I was trying to make an arpeggiator, but I'm overthinking it
-      ++note;
-      if (cv_out >> note & 1) ++num_notes;
-    }
-    --note; // max note held, zero-indexed
-
+    uint8_t note = cv_out - 1;
     digitalWriteFast(PD0_PIN, (note >> 0) & 1);
     digitalWriteFast(PD1_PIN, (note >> 1) & 1);
     digitalWriteFast(PD2_PIN, (note >> 2) & 1);
@@ -348,8 +345,6 @@ void loop() {
     digitalWriteFast(PF0_PIN, (note >> 4) & 1);
     digitalWriteFast(PF1_PIN, (note >> 5) & 1);
     SendCV();
-
-    ++note_count;
   }
   if (cv_out) {
     // gate pulse at 50%
