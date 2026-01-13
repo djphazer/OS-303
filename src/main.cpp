@@ -133,6 +133,12 @@ enum InputIndex : uint8_t {
   DUMMY3,
 };
 
+enum ExtraPins : uint8_t {
+  RUN,
+  SOMETHING, // turns on when holding first 4 white keys
+  NOTHING,
+  CLOCK
+};
 //
 // *** Utilities ***
 //
@@ -223,7 +229,10 @@ const PinPair main_leds[4] = {
   {PITCHMODE_LED,   PITCH_KEY,  0},
   {FUNCTION_LED,    FUNCTION_KEY,   0},
 };
-
+const InputIndex pitched_keys[] = {
+  C_KEY, CSHARP_KEY, D_KEY, DSHARP_KEY, E_KEY, F_KEY, FSHARP_KEY,
+  G_KEY, GSHARP_KEY, A_KEY, ASHARP_KEY, B_KEY, C_KEY2
+};
 
 void setup() {
   Serial.begin(9600);
@@ -246,6 +255,7 @@ void loop() {
   static uint8_t cv_out = 0; // semitone
   static uint8_t clk_count = 0;
   static uint16_t beat_ms = 200;
+  static bool gate_on = false;
   //static uint8_t octave = 0;
 
   // Poll all inputs... but not every tick?
@@ -308,15 +318,18 @@ void loop() {
   }
 
   bool send_note = false;
+  const bool clk_run = extra_ins[RUN].held();
 
   // DIN sync clock @ 24ppqn
-  if (extra_ins[3].rising()) {
-    ++clk_count %= 24;
-    if (clk_count == 0) {
-      // sync and send quarter notes
-      beat_ms = timer;
-      timer = 0;
-      send_note = true;
+  if (clk_run) {
+    if (extra_ins[CLOCK].rising()) {
+      ++clk_count %= 24;
+      if (clk_count == 0) {
+        // sync and send quarter notes
+        beat_ms = timer;
+        timer = 0;
+        send_note = true;
+      }
     }
 
     // debug
@@ -330,9 +343,14 @@ void loop() {
         extra_ins[6].held(),
         extra_ins[7].held()
         );
+  } else { // not run mode
+    for (size_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
+      // any keypress sends a note
+      send_note = send_note || inputs[pitched_keys[i]].rising();
+    }
   }
 
-  if (cv_out && send_note) {
+  if (send_note && cv_out) {
     // Accent on and off for testing
     SetAccent(ticks & 1); // basically random
 
@@ -345,10 +363,13 @@ void loop() {
     digitalWriteFast(PF0_PIN, (note >> 4) & 1);
     digitalWriteFast(PF1_PIN, (note >> 5) & 1);
     SendCV();
+    SetGate(true);
+    gate_on = true;
   }
-  if (cv_out) {
+  if (gate_on && timer > beat_ms / 2) {
     // gate pulse at 50%
-    SetGate(timer < beat_ms / 2);
+    SetGate(false);
+    gate_on = false;
   }
 
   ++ticks;
