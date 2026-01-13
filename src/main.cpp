@@ -270,15 +270,16 @@ void loop() {
       digitalWriteFast(select_pin[i], LOW);
       for (int j = 0; j < 4; ++j) {
         // read pins
-        inputs[ 0 + i*4 + j].push(digitalRead(button_pins[j]));
-        inputs[16 + i*4 + j].push(digitalRead(status_pins[j]));
+        inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j]));
+        inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j]));
       }
       digitalWriteFast(select_pin[i], HIGH);
     }
   }
 
   for (size_t i = 0; i < 4; ++i) {
-    extra_ins[i].push(digitalRead(status_pins[i]));
+    extra_ins[i].push(digitalReadFast(status_pins[i]));
+    extra_ins[i+4].push(digitalReadFast(button_pins[i]));
   }
 
   cv_out = 0;
