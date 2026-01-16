@@ -147,6 +147,8 @@ enum InputIndex : uint8_t {
   INPUT_COUNT,
   EXTRA_PIN_OFFSET = RUN,
 };
+
+
 //
 // *** Utilities ***
 //
@@ -194,9 +196,20 @@ void SetLed(uint8_t pin, bool enable = true) {
 void SetLed(PinPair pins, bool enable = true) {
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
 }
+void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
+  const uint8_t switched_pins[4] = {
+    PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
+  };
+
+  digitalWriteFast(select_pin, LOW);
+  for (uint8_t i = 0; i < 4; ++i) {
+    digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
+  }
+}
 void SetLed(MatrixPin pins, bool enable = true) {
   if (enable) digitalWriteFast(pins.select, LOW);
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
+  if (enable) digitalWriteFast(pins.select, HIGH);
 }
 
 // --- useful pin mapping information ---
@@ -208,9 +221,6 @@ const uint8_t button_pins[4] = {
 };
 const uint8_t status_pins[] = {
   PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
-};
-const uint8_t direct_leds[] = {
-  PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
 };
 
 const MatrixPin switched_leds[16] = {
@@ -264,22 +274,15 @@ void setup() {
 }
 
 void PollInputs(PinState *inputs) {
-  // turn all LEDs off first
-  /*
-  digitalWriteFast(PG0_PIN, LOW);
-  digitalWriteFast(PG1_PIN, LOW);
-  digitalWriteFast(PG2_PIN, LOW);
-  digitalWriteFast(PG3_PIN, LOW);
-  digitalWriteFast(select_pin[0], LOW);
-  digitalWriteFast(select_pin[1], LOW);
-  digitalWriteFast(select_pin[2], LOW);
-  digitalWriteFast(select_pin[3], LOW);
-  */
-
   digitalWriteFast(select_pin[0], HIGH);
   digitalWriteFast(select_pin[1], HIGH);
   digitalWriteFast(select_pin[2], HIGH);
   digitalWriteFast(select_pin[3], HIGH);
+  // turn all LEDs off first
+  digitalWriteFast(PG0_PIN, LOW);
+  digitalWriteFast(PG1_PIN, LOW);
+  digitalWriteFast(PG2_PIN, LOW);
+  digitalWriteFast(PG3_PIN, LOW);
 
   //delayMicroseconds(1);
   // read PA and PB pins while select pins are high
@@ -350,7 +353,7 @@ void loop() {
   // DIN sync clock @ 24ppqn
   if (clk_run) {
     if (inputs[CLOCK].rising()) {
-      ++clk_count %= 24;
+      ++clk_count %= 6;
       if (clk_count == 0) {
         // sync and send quarter notes
         beat_ms = timer;
