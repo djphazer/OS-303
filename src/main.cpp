@@ -305,6 +305,8 @@ void loop() {
   static PinState inputs[INPUT_COUNT + EXTRA_INPUT_COUNT];
   static uint8_t cv_out = 0; // semitone
   static uint8_t clk_count = 0;
+  static uint8_t note_count = 0;
+  static uint8_t tracknum = 0;
   static uint16_t beat_ms = 200;
   static bool gate_on = false;
   //static uint8_t octave = 0;
@@ -312,7 +314,10 @@ void loop() {
   // Poll all inputs...
   PollInputs(inputs);
 
-  cv_out = 0;
+  tracknum = uint8_t(inputs[TRACK_BIT0].held()
+           | (inputs[TRACK_BIT1].held() << 1)
+           | (inputs[TRACK_BIT2].held() << 2)) + 1;
+
   // set LEDs last - leaves certain select pins low
   for (size_t i = 0; i < ARRAY_SIZE(switched_leds); ++i) {
     // DEBUG //
@@ -322,19 +327,11 @@ void loop() {
 
     const bool button_held = inputs[switched_leds[i].button].held();
     SetLed(switched_leds[i], gate_on && button_held);
-
-    // -- key-handlers --
-    if (button_held)
-      cv_out = max(cv_out, switched_leds[i].pitch);
   }
   // extra non-switched LEDs
   for (size_t i = 0; i < 4; ++i) {
     const bool button_held = inputs[main_leds[i].button].held();
     SetLed(main_leds[i], gate_on && button_held);
-
-    // -- key-handlers --
-    if (button_held)
-      cv_out = max(cv_out, main_leds[i].pitch);
   }
 
   const PinState *extra_ins = inputs+INPUT_COUNT;
@@ -365,25 +362,25 @@ void loop() {
         extra_ins[7].held()
         );
   }
-  //else { // not run mode
-    for (size_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
-      // any keypress sends a note
-      if (inputs[pitched_keys[i]].rising()) {
-        send_note = true;
-        cv_out = i+1;
-        timer = 0;
-        clk_count = 0;
-      }
-      //if (inputs[pitched_keys[i]].held()) { }
+  //else // not run mode
+  for (size_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
+    // any keypress sends a note
+    if (inputs[pitched_keys[i]].rising()) {
+      send_note = true;
+      timer = 0;
+      clk_count = 0;
     }
-  //}
+    if (inputs[pitched_keys[i]].held()) {
+      cv_out = i+1;
+    }
+  }
 
   if (send_note && cv_out) {
     // Accent on and off for testing
     SetAccent(ticks & 1); // basically random
 
     // DAC for CV Out
-    uint8_t note = cv_out - 1;
+    uint8_t note = cv_out - 1 + 12*(note_count % tracknum);
     digitalWriteFast(PD0_PIN, (note >> 0) & 1);
     digitalWriteFast(PD1_PIN, (note >> 1) & 1);
     digitalWriteFast(PD2_PIN, (note >> 2) & 1);
@@ -393,6 +390,7 @@ void loop() {
     SendCV(inputs[SLIDE_KEY].held());
     SetGate(true);
     gate_on = true;
+    ++note_count;
   }
   if (gate_on && timer > beat_ms / 2) {
     // gate pulse at 50%
