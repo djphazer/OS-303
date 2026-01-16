@@ -132,13 +132,22 @@ enum InputIndex : uint8_t {
   DUMMY1,
   DUMMY2,
   DUMMY3,
+
+  INPUT_COUNT
 };
 
 enum ExtraPins : uint8_t {
-  RUN,
+  RUN, // PA0
   SOMETHING, // turns on when holding first 4 white keys
   NOTHING,
-  CLOCK
+  CLOCK, // PA4
+
+  PBUTTON0,
+  PBUTTON1,
+  PBUTTON2,
+  PBUTTON3,
+
+  EXTRA_INPUT_COUNT
 };
 //
 // *** Utilities ***
@@ -157,8 +166,9 @@ struct PinState {
   void push(bool high) {
     state = (state << 1) | high;
   }
-  const bool rising() const { return state == 0x01; }
-  const bool falling() const { return state == 0xfe; }
+  // using 4-bit debounce
+  const bool rising() const { return (state & 0x0f) == 0x01; }
+  const bool falling() const { return (state & 0x0f) == 0x0e; }
   const bool held() const { return state != 0x00; }
 };
 
@@ -236,6 +246,8 @@ const InputIndex pitched_keys[] = {
   G_KEY, GSHARP_KEY, A_KEY, ASHARP_KEY, B_KEY, C_KEY2
 };
 
+//void HandleClock() { }
+
 void setup() {
   Serial.begin(9600);
   for (size_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
@@ -247,21 +259,12 @@ void setup() {
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], HIGH);
   }
+  //attachInterrupt(PA3_PIN, HandleClock, RISING);
 }
 
-void loop() {
-  static elapsedMillis timer = 0;
-  static uint16_t ticks = 0;
-  static PinState inputs[32];
-  static PinState extra_ins[8];
-  static uint8_t cv_out = 0; // semitone
-  static uint8_t clk_count = 0;
-  static uint16_t beat_ms = 200;
-  static bool gate_on = false;
-  //static uint8_t octave = 0;
-
-  // Poll all inputs...
+void PollInputs(PinState *inputs) {
   // turn all LEDs off first
+  /*
   digitalWriteFast(PG0_PIN, LOW);
   digitalWriteFast(PG1_PIN, LOW);
   digitalWriteFast(PG2_PIN, LOW);
@@ -270,15 +273,18 @@ void loop() {
   digitalWriteFast(select_pin[1], LOW);
   digitalWriteFast(select_pin[2], LOW);
   digitalWriteFast(select_pin[3], LOW);
+  */
+
   digitalWriteFast(select_pin[0], HIGH);
   digitalWriteFast(select_pin[1], HIGH);
   digitalWriteFast(select_pin[2], HIGH);
   digitalWriteFast(select_pin[3], HIGH);
 
+  //delayMicroseconds(1);
   // read PA and PB pins while select pins are high
   for (size_t i = 0; i < 4; ++i) {
-    extra_ins[i].push(digitalReadFast(status_pins[i]));
-    extra_ins[i+4].push(digitalReadFast(button_pins[i]));
+    inputs[INPUT_COUNT + i].push(digitalReadFast(status_pins[i]));
+    inputs[INPUT_COUNT + i+4].push(digitalReadFast(button_pins[i]));
   }
 
   // open each switched channel with select pin
@@ -291,6 +297,20 @@ void loop() {
     }
     digitalWriteFast(select_pin[i], HIGH);
   }
+}
+
+void loop() {
+  static elapsedMillis timer = 0;
+  static uint16_t ticks = 0;
+  static PinState inputs[INPUT_COUNT + EXTRA_INPUT_COUNT];
+  static uint8_t cv_out = 0; // semitone
+  static uint8_t clk_count = 0;
+  static uint16_t beat_ms = 200;
+  static bool gate_on = false;
+  //static uint8_t octave = 0;
+
+  // Poll all inputs...
+  PollInputs(inputs);
 
   cv_out = 0;
   // set LEDs last - leaves certain select pins low
@@ -301,7 +321,7 @@ void loop() {
     // DEBUG //
 
     const bool button_held = inputs[switched_leds[i].button].held();
-    SetLed(switched_leds[i], button_held);
+    SetLed(switched_leds[i], gate_on && button_held);
 
     // -- key-handlers --
     if (button_held)
@@ -310,13 +330,14 @@ void loop() {
   // extra non-switched LEDs
   for (size_t i = 0; i < 4; ++i) {
     const bool button_held = inputs[main_leds[i].button].held();
-    SetLed(main_leds[i], button_held);
+    SetLed(main_leds[i], gate_on && button_held);
 
     // -- key-handlers --
     if (button_held)
       cv_out = max(cv_out, main_leds[i].pitch);
   }
 
+  const PinState *extra_ins = inputs+INPUT_COUNT;
   bool send_note = false;
   const bool clk_run = extra_ins[RUN].held();
 
@@ -333,7 +354,7 @@ void loop() {
     }
 
     // debug
-    Serial.printf("clock stuff? %u %u %u %u, %u %u %u %u\n",
+    Serial.printf("clock stuff: %u %u %u %u, %u %u %u %u\n",
         extra_ins[0].held(),
         extra_ins[1].held(),
         extra_ins[2].held(),
@@ -343,12 +364,19 @@ void loop() {
         extra_ins[6].held(),
         extra_ins[7].held()
         );
-  } else { // not run mode
+  }
+  //else { // not run mode
     for (size_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
       // any keypress sends a note
-      send_note = send_note || inputs[pitched_keys[i]].rising();
+      if (inputs[pitched_keys[i]].rising()) {
+        send_note = true;
+        cv_out = i+1;
+        timer = 0;
+        clk_count = 0;
+      }
+      //if (inputs[pitched_keys[i]].held()) { }
     }
-  }
+  //}
 
   if (send_note && cv_out) {
     // Accent on and off for testing
@@ -362,7 +390,7 @@ void loop() {
     digitalWriteFast(PD3_PIN, (note >> 3) & 1);
     digitalWriteFast(PF0_PIN, (note >> 4) & 1);
     digitalWriteFast(PF1_PIN, (note >> 5) & 1);
-    SendCV();
+    SendCV(inputs[SLIDE_KEY].held());
     SetGate(true);
     gate_on = true;
   }
