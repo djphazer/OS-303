@@ -133,10 +133,7 @@ enum InputIndex : uint8_t {
   DUMMY2,
   DUMMY3,
 
-  INPUT_COUNT
-};
-
-enum ExtraPins : uint8_t {
+  // ExtraPins
   RUN, // PA0
   SOMETHING, // turns on when holding first 4 white keys
   NOTHING,
@@ -147,7 +144,8 @@ enum ExtraPins : uint8_t {
   PBUTTON2,
   PBUTTON3,
 
-  EXTRA_INPUT_COUNT
+  INPUT_COUNT,
+  EXTRA_PIN_OFFSET = RUN,
 };
 //
 // *** Utilities ***
@@ -162,14 +160,15 @@ struct MatrixPin {
   InputIndex button;
 };
 struct PinState {
-  uint8_t state = 0; // shiftreg for debounce
+  uint8_t state = 0; // shiftreg
   void push(bool high) {
     state = (state << 1) | high;
   }
-  // using 4-bit debounce
-  const bool rising() const { return (state & 0x0f) == 0x01; }
-  const bool falling() const { return (state & 0x0f) == 0x0e; }
-  const bool held() const { return state != 0x00; }
+  // using simple 2-bit rise/fall detection
+  // I don't think we need debouncing
+  const bool rising() const { return (state & 0x03) == 0x01; }
+  const bool falling() const { return (state & 0x03) == 0x02; }
+  const bool held() const { return state & 0x03; }
 };
 
 // util functions
@@ -189,13 +188,15 @@ void SetAccent(bool on) {
   digitalWriteFast(PE0_PIN, on ? LOW : HIGH);
 }
 
+void SetLed(uint8_t pin, bool enable = true) {
+  digitalWriteFast(pin, enable ? HIGH : LOW);
+}
 void SetLed(PinPair pins, bool enable = true) {
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
 }
 void SetLed(MatrixPin pins, bool enable = true) {
+  if (enable) digitalWriteFast(pins.select, LOW);
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
-  if (enable)
-    digitalWriteFast(pins.select, LOW);
 }
 
 // --- useful pin mapping information ---
@@ -283,8 +284,8 @@ void PollInputs(PinState *inputs) {
   //delayMicroseconds(1);
   // read PA and PB pins while select pins are high
   for (size_t i = 0; i < 4; ++i) {
-    inputs[INPUT_COUNT + i].push(digitalReadFast(status_pins[i]));
-    inputs[INPUT_COUNT + i+4].push(digitalReadFast(button_pins[i]));
+    inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i]));
+    inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i]));
   }
 
   // open each switched channel with select pin
@@ -302,23 +303,32 @@ void PollInputs(PinState *inputs) {
 void loop() {
   static elapsedMillis timer = 0;
   static uint16_t ticks = 0;
-  static PinState inputs[INPUT_COUNT + EXTRA_INPUT_COUNT];
+  static PinState inputs[INPUT_COUNT];
   static uint8_t cv_out = 0; // semitone
   static uint8_t clk_count = 0;
   static uint8_t note_count = 0;
   static uint8_t tracknum = 0;
   static uint16_t beat_ms = 200;
   static bool gate_on = false;
+  static bool time_mode = false;
+  static bool function_mode = false;
+
   //static uint8_t octave = 0;
 
   // Poll all inputs...
   PollInputs(inputs);
 
+  // process all inputs
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2)) + 1;
 
-  // set LEDs last - leaves certain select pins low
+  if (inputs[TIME_KEY].rising()) time_mode = true;
+  if (inputs[PITCH_KEY].rising()) time_mode = false;
+  if (inputs[FUNCTION_KEY].rising()) function_mode = !function_mode;
+  if (inputs[CLEAR_KEY].rising()) cv_out = 0;
+
+  // --- set LEDs last - leaves certain select pins low
   for (size_t i = 0; i < ARRAY_SIZE(switched_leds); ++i) {
     // DEBUG //
     if (inputs[i].rising())    { Serial.printf("Button index: %u\n", i); }
@@ -329,18 +339,17 @@ void loop() {
     SetLed(switched_leds[i], gate_on && button_held);
   }
   // extra non-switched LEDs
-  for (size_t i = 0; i < 4; ++i) {
-    const bool button_held = inputs[main_leds[i].button].held();
-    SetLed(main_leds[i], gate_on && button_held);
-  }
+  SetLed(TIMEMODE_LED, time_mode);
+  SetLed(PITCHMODE_LED, !time_mode);
+  SetLed(FUNCTION_LED, function_mode);
+  SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
 
-  const PinState *extra_ins = inputs+INPUT_COUNT;
   bool send_note = false;
-  const bool clk_run = extra_ins[RUN].held();
+  const bool clk_run = inputs[RUN].held();
 
   // DIN sync clock @ 24ppqn
   if (clk_run) {
-    if (extra_ins[CLOCK].rising()) {
+    if (inputs[CLOCK].rising()) {
       ++clk_count %= 24;
       if (clk_count == 0) {
         // sync and send quarter notes
@@ -352,14 +361,14 @@ void loop() {
 
     // debug
     Serial.printf("clock stuff: %u %u %u %u, %u %u %u %u\n",
-        extra_ins[0].held(),
-        extra_ins[1].held(),
-        extra_ins[2].held(),
-        extra_ins[3].held(),
-        extra_ins[4].held(),
-        extra_ins[5].held(),
-        extra_ins[6].held(),
-        extra_ins[7].held()
+        inputs[EXTRA_PIN_OFFSET+0].held(),
+        inputs[EXTRA_PIN_OFFSET+1].held(),
+        inputs[EXTRA_PIN_OFFSET+2].held(),
+        inputs[EXTRA_PIN_OFFSET+3].held(),
+        inputs[EXTRA_PIN_OFFSET+4].held(),
+        inputs[EXTRA_PIN_OFFSET+5].held(),
+        inputs[EXTRA_PIN_OFFSET+6].held(),
+        inputs[EXTRA_PIN_OFFSET+7].held()
         );
   }
   //else // not run mode
