@@ -1,157 +1,13 @@
 #include <Arduino.h>
-
-//const int MAXPIN = 45;
-
-enum PinoutDefs : uint8_t {
-  MIDI_IN_PIN = 2,
-  MIDI_OUT_PIN = 3,
-
-  // Port C - Data inputs/outputs...?
-  PC0_PIN = 4,
-  PC1_PIN = 5,
-  PC2_PIN = 6,
-  PC3_PIN = 7,
-
-  TIMEMODE_LED = PC0_PIN,
-  ASHARP_LED = PC1_PIN,
-  PITCHMODE_LED = PC2_PIN,
-  FUNCTION_LED = PC3_PIN,
-
-  // PI1 is Clock for the CV Out flip-flop, and also enables Slide while held
-  PI1_PIN = 8, // Pitch data latch strobe
-  PI2_PIN = 9, // Gate signal
-
-  // Ports D & F - memory address to pitch data - CV out
-  PD0_PIN = 10, // bit 0
-  PD1_PIN = 11, // bit 1
-  PD2_PIN = 12, // bit 2
-  PD3_PIN = 13, // bit 3
-  PF0_PIN = 14, // bit 4
-  PF1_PIN = 15, // bit 5
-  PF2_PIN = 16, // memory (unused)
-  PF3_PIN = 17, // memory (unused)
-
-  // Port E - memory address (probably unused)
-  PE3_PIN = 1,
-  PE2_PIN = 0,
-  PE1_PIN = 19,
-  PE0_PIN = 18, // used for Accent
-
-  // Port B - Switch board INPUTS (buttons)
-  PB3_PIN = 27,
-  PB2_PIN = 26,
-  PB1_PIN = 25,
-  PB0_PIN = 24,
-
-  // Port A - switched inputs to STATUS (TEMPO CLOCK, START/STOP, TAP)
-  PA3_PIN = 23,
-  PA2_PIN = 22,
-  PA1_PIN = 21,
-  PA0_PIN = 20,
-
-  // Port H - switched outputs to STATUS, BUFFER, & GATE
-  // These are the mux selectors for PG, PA, and PB
-  PH0_PIN = 38,
-  PH1_PIN = 39,
-  PH2_PIN = 40,
-  PH3_PIN = 41,
-
-  // Port G - drive signals to switch board LEDs
-  PG0_PIN = 42, // [1], [DEL], [DOWN], [5]
-  PG1_PIN = 43, // [2], [INS], [UP], [6]
-  PG2_PIN = 44, // [3], [F#], [ACCENT], [7]
-  PG3_PIN = 45, // [4], [G#], [SLIDE], [8]
-};
-
-const uint8_t INPUTS[] = {
-  PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
-  PB0_PIN, PB1_PIN, PB2_PIN, PB3_PIN,
-};
-const uint8_t OUTPUTS[] = {
-  PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
-  PD0_PIN, PD1_PIN, PD2_PIN, PD3_PIN,
-  PE0_PIN, PE1_PIN, PE2_PIN, PE3_PIN,
-  PF0_PIN, PF1_PIN, PF2_PIN, PF3_PIN,
-  PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
-  PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
-  PI1_PIN, PI2_PIN,
-};
-
-/*
- * The PH pins are used to select which buttons/LEDs to engage using PG, PA, and PB.
- *
- * PA are receiving status info, and a few buttons.
- * PB are switched inputs for the buttons in the switch board.
- * PG are switched outputs for the LEDs.
- * PC are direct outputs for a few other LEDs (which also engage CMOS memory, unused).
- *
- * PD and PF are data bits for CV out, which is a 6-bit number for pitch in semitones.
- * PE0 is the Accent bit.
- *
- * PI1 is Clock for CV Out and Accent, and also engages Slide while held
- * PI2 is Gate out
- */
-
-enum InputIndex : uint8_t {
-  C_KEY, // 0
-  D_KEY,
-  E_KEY,
-  F_KEY,
-
-  G_KEY, // 4
-  A_KEY,
-  B_KEY,
-  C_KEY2,
-
-  DOWN_KEY, // 8
-  UP_KEY,
-  ACCENT_KEY,
-  SLIDE_KEY,
-
-  FSHARP_KEY, // 12
-  GSHARP_KEY,
-  ASHARP_KEY,
-  BACK_KEY,
-
-  WRITE_MODE, // 16
-  TRACK_SEL,
-  CSHARP_KEY,
-  DSHARP_KEY,
-
-  TRACK_BIT0, // 20
-  TRACK_BIT1,
-  TRACK_BIT2,
-  DUMMY_PIN, // 23 unused
-
-  CLEAR_KEY, // 24
-  FUNCTION_KEY,
-  PITCH_KEY,
-  TIME_KEY,
-
-  DUMMY0, // 28
-  DUMMY1,
-  DUMMY2,
-  DUMMY3,
-
-  // ExtraPins
-  RUN, // PA0
-  SOMETHING, // turns on when holding first 4 white keys
-  NOTHING,
-  CLOCK, // PA4
-
-  // I don't think these 4 actually do anything...
-  //PBUTTON0, PBUTTON1, PBUTTON2, PBUTTON3,
-
-  INPUT_COUNT,
-  EXTRA_PIN_OFFSET = RUN,
-};
-
+#include "pins.h"
 
 //
 // *** Utilities ***
 //
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+#define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
+// data + function bundles, aka structs
 struct PinPair {
   uint8_t led, button, pitch;
 };
@@ -171,46 +27,9 @@ struct PinState {
   const bool held() const { return state & 0x03; }
 };
 
-// util functions
-void SendCV(bool slide = false) {
-  // Clock for the D/A converter chip
-  if (slide) digitalWriteFast(PI1_PIN, LOW);
-  digitalWriteFast(PI1_PIN, HIGH);
-  if (!slide) digitalWriteFast(PI1_PIN, LOW);
-}
-
-void SetGate(bool on) {
-  digitalWriteFast(PI2_PIN, on? HIGH : LOW);
-}
-
-void SetAccent(bool on) {
-  // Accent seems to use PE0
-  digitalWriteFast(PE0_PIN, on ? LOW : HIGH);
-}
-
-void SetLed(uint8_t pin, bool enable = true) {
-  digitalWriteFast(pin, enable ? HIGH : LOW);
-}
-void SetLed(PinPair pins, bool enable = true) {
-  digitalWriteFast(pins.led, enable ? HIGH : LOW);
-}
-void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
-  const uint8_t switched_pins[4] = {
-    PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
-  };
-
-  digitalWriteFast(select_pin, LOW);
-  for (uint8_t i = 0; i < 4; ++i) {
-    digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
-  }
-}
-void SetLed(MatrixPin pins, bool enable = true) {
-  if (enable) digitalWriteFast(pins.select, LOW);
-  digitalWriteFast(pins.led, enable ? HIGH : LOW);
-  if (enable) digitalWriteFast(pins.select, HIGH);
-}
-
-// --- useful pin mapping information ---
+//
+// --- useful pin correlations ---
+//
 const uint8_t select_pin[4] = {
   PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
 };
@@ -255,6 +74,46 @@ const InputIndex pitched_keys[] = {
   G_KEY, GSHARP_KEY, A_KEY, ASHARP_KEY, B_KEY, C_KEY2
 };
 
+// util functions
+void SendCV(bool slide = false) {
+  // Clock for the D/A converter chip
+  if (slide) digitalWriteFast(PI1_PIN, LOW);
+  digitalWriteFast(PI1_PIN, HIGH);
+  if (!slide) digitalWriteFast(PI1_PIN, LOW);
+}
+
+void SetGate(bool on) {
+  digitalWriteFast(PI2_PIN, on? HIGH : LOW);
+}
+
+void SetAccent(bool on) {
+  // Accent seems to use PE0
+  digitalWriteFast(PE0_PIN, on ? LOW : HIGH);
+}
+
+void SetLed(uint8_t pin, bool enable = true) {
+  digitalWriteFast(pin, enable ? HIGH : LOW);
+}
+void SetLed(PinPair pins, bool enable = true) {
+  digitalWriteFast(pins.led, enable ? HIGH : LOW);
+}
+void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
+  const uint8_t switched_pins[4] = {
+    PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
+  };
+
+  digitalWriteFast(select_pin, LOW);
+  for (uint8_t i = 0; i < 4; ++i) {
+    digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
+  }
+}
+void SetLed(MatrixPin pins, bool enable = true) {
+  if (enable) digitalWriteFast(pins.select, LOW);
+  digitalWriteFast(pins.led, enable ? HIGH : LOW);
+  if (enable) digitalWriteFast(pins.select, HIGH);
+}
+
+
 //void HandleClock() { }
 
 void setup() {
@@ -282,23 +141,22 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
 
-  //delayMicroseconds(1);
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
-    inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i]));
-    // not sure if these are actual signals...
-    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i]));
+    inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i])); // PAx
+    // not sure if these are actually used...
+    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
 
   // open each switched channel with select pin
   for (uint8_t i = 0; i < 4; ++i) {
-    digitalWriteFast(select_pin[i], LOW);
+    digitalWriteFast(select_pin[i], LOW); // PHx
     for (int j = 0; j < 4; ++j) {
       // read pins
-      inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j]));
-      inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j]));
+      inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j])); // PBx
+      inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j])); // PAx
     }
-    digitalWriteFast(select_pin[i], HIGH);
+    digitalWriteFast(select_pin[i], HIGH); // PHx
   }
 }
 
@@ -307,6 +165,7 @@ void loop() {
   static PinState inputs[INPUT_COUNT];
   static uint8_t ticks = 0;
   static uint8_t cv_out = 0; // semitone
+  static int8_t octave = 0;
   static uint8_t clk_count = 0;
   static uint8_t note_count = 0;
   static uint8_t tracknum = 0;
@@ -315,7 +174,6 @@ void loop() {
   static bool time_mode = false;
   static bool function_mode = false;
 
-  //static uint8_t octave = 0;
 
   // Poll all inputs...
   PollInputs(inputs);
@@ -329,6 +187,10 @@ void loop() {
   if (inputs[PITCH_KEY].rising()) time_mode = false;
   if (inputs[FUNCTION_KEY].rising()) function_mode = !function_mode;
   if (inputs[CLEAR_KEY].rising()) cv_out = 0;
+
+  if (inputs[UP_KEY].rising()) octave += 1;
+  if (inputs[DOWN_KEY].rising()) octave -= 1;
+  CONSTRAIN(octave, -2, 3);
 
   // --- set LEDs last
   uint8_t mask = 0;
