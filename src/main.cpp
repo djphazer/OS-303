@@ -139,10 +139,8 @@ enum InputIndex : uint8_t {
   NOTHING,
   CLOCK, // PA4
 
-  PBUTTON0,
-  PBUTTON1,
-  PBUTTON2,
-  PBUTTON3,
+  // I don't think these 4 actually do anything...
+  //PBUTTON0, PBUTTON1, PBUTTON2, PBUTTON3,
 
   INPUT_COUNT,
   EXTRA_PIN_OFFSET = RUN,
@@ -261,10 +259,10 @@ const InputIndex pitched_keys[] = {
 
 void setup() {
   Serial.begin(9600);
-  for (size_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
+  for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
     pinMode(INPUTS[i], INPUT); // pullup?
   }
-  for (size_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
+  for (uint8_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     pinMode(OUTPUTS[i], OUTPUT);
   }
   for (uint8_t i = 0; i < 4; ++i) {
@@ -286,13 +284,14 @@ void PollInputs(PinState *inputs) {
 
   //delayMicroseconds(1);
   // read PA and PB pins while select pins are high
-  for (size_t i = 0; i < 4; ++i) {
+  for (uint8_t i = 0; i < 4; ++i) {
     inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i]));
-    inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i]));
+    // not sure if these are actual signals...
+    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i]));
   }
 
   // open each switched channel with select pin
-  for (size_t i = 0; i < 4; ++i) {
+  for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], LOW);
     for (int j = 0; j < 4; ++j) {
       // read pins
@@ -305,8 +304,8 @@ void PollInputs(PinState *inputs) {
 
 void loop() {
   static elapsedMillis timer = 0;
-  static uint16_t ticks = 0;
   static PinState inputs[INPUT_COUNT];
+  static uint8_t ticks = 0;
   static uint8_t cv_out = 0; // semitone
   static uint8_t clk_count = 0;
   static uint8_t note_count = 0;
@@ -331,16 +330,13 @@ void loop() {
   if (inputs[FUNCTION_KEY].rising()) function_mode = !function_mode;
   if (inputs[CLEAR_KEY].rising()) cv_out = 0;
 
-  // --- set LEDs last - leaves certain select pins low
-  for (size_t i = 0; i < ARRAY_SIZE(switched_leds); ++i) {
-    // DEBUG //
-    if (inputs[i].rising())    { Serial.printf("Button index: %u\n", i); }
-    if (inputs[i+16].rising()) { Serial.printf("Status index: %u\n", i + 16); }
-    // DEBUG //
-
-    const bool button_held = inputs[switched_leds[i].button].held();
-    SetLed(switched_leds[i], gate_on && button_held);
+  // --- set LEDs last
+  uint8_t mask = 0;
+  for (uint8_t i = 0; i < 4; ++i) {
+    const uint8_t idx = (ticks & 0x3)*4 + i;
+    mask |= inputs[switched_leds[idx].button].held() << i;
   }
+  SetLedSelection(switched_leds[(ticks & 0x3)*4].select, gate_on ? mask : 0);
   // extra non-switched LEDs
   SetLed(TIMEMODE_LED, time_mode);
   SetLed(PITCHMODE_LED, !time_mode);
@@ -360,6 +356,9 @@ void loop() {
         timer = 0;
         send_note = true;
       }
+      if (clk_count == 3) {
+        // TODO: gate off here instead of using timer
+      }
     }
 
     // debug
@@ -375,7 +374,7 @@ void loop() {
         );
   }
   //else // not run mode
-  for (size_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
+  for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
     if (inputs[pitched_keys[i]].rising()) {
       send_note = true;
