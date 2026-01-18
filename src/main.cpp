@@ -88,7 +88,7 @@ void SetGate(bool on) {
 
 void SetAccent(bool on) {
   // Accent seems to use PE0
-  digitalWriteFast(PE0_PIN, on ? LOW : HIGH);
+  digitalWriteFast(PE0_PIN, on ? HIGH : LOW);
 }
 
 void SetLed(uint8_t pin, bool enable = true) {
