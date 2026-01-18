@@ -173,29 +173,19 @@ void loop() {
   static bool gate_on = false;
   static bool time_mode = false;
   static bool function_mode = false;
-
+  static uint8_t step_pitch[16]; // 6-bit Pitch, Accent, and Slide
+  static uint8_t step_time[16];
+  static uint8_t step_idx = 0;
 
   // Poll all inputs...
   PollInputs(inputs);
 
-  // process all inputs
-  tracknum = uint8_t(inputs[TRACK_BIT0].held()
-           | (inputs[TRACK_BIT1].held() << 1)
-           | (inputs[TRACK_BIT2].held() << 2)) + 1;
-
-  if (inputs[TIME_KEY].rising()) time_mode = true;
-  if (inputs[PITCH_KEY].rising()) time_mode = false;
-  if (inputs[FUNCTION_KEY].rising()) function_mode = !function_mode;
-  if (inputs[CLEAR_KEY].rising()) cv_out = 0;
-
-  if (inputs[UP_KEY].rising()) octave += 1;
-  if (inputs[DOWN_KEY].rising()) octave -= 1;
-  CONSTRAIN(octave, -2, 3);
-
-  // --- set LEDs last
+  // --- turn LEDs on asap
   uint8_t mask = 0;
   for (uint8_t i = 0; i < 4; ++i) {
+    // one row per tick, cycling through the 4 rows
     const uint8_t idx = (ticks & 0x3)*4 + i;
+    // show the pressed button for testing
     mask |= inputs[switched_leds[idx].button].held() << i;
   }
   SetLedSelection(switched_leds[(ticks & 0x3)*4].select, gate_on ? mask : 0);
@@ -205,68 +195,101 @@ void loop() {
   SetLed(FUNCTION_LED, function_mode);
   SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
 
-  bool send_note = false;
+  // process all inputs
+  tracknum = uint8_t(inputs[TRACK_BIT0].held()
+           | (inputs[TRACK_BIT1].held() << 1)
+           | (inputs[TRACK_BIT2].held() << 2)) + 1;
+
+  if (inputs[TIME_KEY].rising()) time_mode = true;
+  if (inputs[PITCH_KEY].rising()) time_mode = false;
+
+  if (inputs[FUNCTION_KEY].rising()) function_mode = !function_mode;
+  if (inputs[CLEAR_KEY].rising()) cv_out = 0;
+  if (inputs[BACK_KEY].rising()) step_idx = 0;
+
+  if (inputs[UP_KEY].rising()) octave += 1;
+  if (inputs[DOWN_KEY].rising()) octave -= 1;
+  CONSTRAIN(octave, -2, 2);
+
   const bool clk_run = inputs[RUN].held();
+  const bool track_mode = inputs[TRACK_SEL].held();
+  const bool write_mode = inputs[WRITE_MODE].held();
 
+  static bool send_note = true;
+  bool gate_off = false;
   // DIN sync clock @ 24ppqn
-  if (clk_run) {
-    if (inputs[CLOCK].rising()) {
-      ++clk_count %= 6;
-      if (clk_count == 0) {
-        // sync and send quarter notes
-        beat_ms = timer;
-        timer = 0;
-        send_note = true;
-      }
-      if (clk_count == 3) {
-        // TODO: gate off here instead of using timer
-      }
+  if (inputs[CLOCK].rising()) {
+    const uint8_t clklen = (6*(step_time[step_idx]+1));
+    ++clk_count %= clklen;
+    if (clk_count == 0) {
+      // sync and send quarter notes
+      beat_ms = timer;
+      timer = 0;
+      send_note = true;
+      ++step_idx %= 16;
     }
-
-    // debug
-    Serial.printf("clock stuff: %u %u %u %u, %u %u %u %u\n",
-        inputs[EXTRA_PIN_OFFSET+0].held(),
-        inputs[EXTRA_PIN_OFFSET+1].held(),
-        inputs[EXTRA_PIN_OFFSET+2].held(),
-        inputs[EXTRA_PIN_OFFSET+3].held(),
-        inputs[EXTRA_PIN_OFFSET+4].held(),
-        inputs[EXTRA_PIN_OFFSET+5].held(),
-        inputs[EXTRA_PIN_OFFSET+6].held(),
-        inputs[EXTRA_PIN_OFFSET+7].held()
-        );
+    if (clk_count == clklen/2) {
+      gate_off = true;
+    }
   }
-  //else // not run mode
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
     if (inputs[pitched_keys[i]].rising()) {
       send_note = true;
       timer = 0;
-      clk_count = 0;
     }
     if (inputs[pitched_keys[i]].held()) {
       cv_out = i+1;
     }
   }
 
-  if (send_note && cv_out) {
-    // Accent on and off for testing
-    SetAccent(ticks & 1); // basically random
+  if (clk_run) {
+    // send sequence step
+    if (send_note) {
+      const uint8_t note = step_pitch[step_idx];
 
-    // DAC for CV Out
-    uint8_t note = cv_out - 1 + 12*(note_count % tracknum);
-    digitalWriteFast(PD0_PIN, (note >> 0) & 1);
-    digitalWriteFast(PD1_PIN, (note >> 1) & 1);
-    digitalWriteFast(PD2_PIN, (note >> 2) & 1);
-    digitalWriteFast(PD3_PIN, (note >> 3) & 1);
-    digitalWriteFast(PF0_PIN, (note >> 4) & 1);
-    digitalWriteFast(PF1_PIN, (note >> 5) & 1);
-    SendCV(inputs[SLIDE_KEY].held());
-    SetGate(true);
-    gate_on = true;
-    ++note_count;
+      SetAccent((note >> 6) & 1);
+      // DAC for CV Out
+      digitalWriteFast(PD0_PIN, (note >> 0) & 1);
+      digitalWriteFast(PD1_PIN, (note >> 1) & 1);
+      digitalWriteFast(PD2_PIN, (note >> 2) & 1);
+      digitalWriteFast(PD3_PIN, (note >> 3) & 1);
+      digitalWriteFast(PF0_PIN, (note >> 4) & 1);
+      digitalWriteFast(PF1_PIN, (note >> 5) & 1);
+
+      SendCV((note >> 7) & 1);
+
+      SetGate(true);
+      gate_on = true;
+      ++note_count;
+      send_note = false;
+    }
+  } else {
+    // not run mode - send notes from keys
+    if (send_note && cv_out) {
+      SetAccent(inputs[ACCENT_KEY].held());
+
+      // DAC for CV Out
+      uint8_t note = 24 + cv_out - 1 + 12*(octave);
+      const bool slide = inputs[SLIDE_KEY].held();
+
+      digitalWriteFast(PD0_PIN, (note >> 0) & 1);
+      digitalWriteFast(PD1_PIN, (note >> 1) & 1);
+      digitalWriteFast(PD2_PIN, (note >> 2) & 1);
+      digitalWriteFast(PD3_PIN, (note >> 3) & 1);
+      digitalWriteFast(PF0_PIN, (note >> 4) & 1);
+      digitalWriteFast(PF1_PIN, (note >> 5) & 1);
+      SendCV(slide);
+      SetGate(true);
+      gate_on = true;
+      ++note_count;
+      send_note = false;
+    }
   }
-  if (gate_on && timer > beat_ms / 2) {
-    // gate pulse at 50%
+
+  // simple gate-off
+  if (gate_on && gate_off) {
+    //delay(1); // to mimic real 303, the gate off should be 1ms late
     SetGate(false);
     gate_on = false;
   }
