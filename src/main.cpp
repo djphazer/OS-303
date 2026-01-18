@@ -221,15 +221,18 @@ void loop() {
   if (inputs[CLOCK].rising()) {
     const uint8_t clklen = (6*(step_time[step_idx]+1));
     ++clk_count %= clklen;
-    if (clk_count == 0) {
-      // sync and send quarter notes
-      beat_ms = timer;
-      timer = 0;
-      send_note = true;
-      ++step_idx %= 16;
-    }
-    if (clk_count == clklen/2) {
-      gate_off = true;
+
+    if (clk_run) {
+      if (clk_count == 0) {
+        // sync and send quarter notes
+        beat_ms = timer;
+        timer = 0;
+        send_note = true; // send only if running
+        ++step_idx %= 16;
+      }
+      if (clk_count == clklen/2) {
+        gate_off = true;
+      }
     }
   }
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
@@ -240,6 +243,9 @@ void loop() {
     }
     if (inputs[pitched_keys[i]].held()) {
       cv_out = i+1;
+    }
+    if (inputs[pitched_keys[i]].falling()) {
+      gate_off = true;
     }
   }
 
