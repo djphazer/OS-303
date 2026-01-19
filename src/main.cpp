@@ -161,8 +161,8 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
   */
-  PORTF = 0b00001111;
-  delayMicroseconds(1);
+  PORTF |= 0x0f;
+  PORTF = 0x0f;
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
@@ -184,7 +184,9 @@ void PollInputs(PinState *inputs) {
 }
 
 void loop() {
-  static elapsedMillis timer = 0;
+  //static elapsedMillis timer = 0;
+  //static uint16_t beat_ms = 200;
+
   static PinState inputs[INPUT_COUNT];
   static uint8_t ticks = 0;
   static uint8_t cv_out = 0; // semitone
@@ -192,13 +194,13 @@ void loop() {
   static uint8_t clk_count = 0;
   static uint8_t note_count = 0;
   static uint8_t tracknum = 0;
-  static uint16_t beat_ms = 200;
   static bool gate_on = false;
   static bool time_mode = false;
   static bool function_mode = false;
   static uint8_t step_pitch[16]; // 6-bit Pitch, Accent, and Slide
   static uint8_t step_time[16];
   static uint8_t step_idx = 0;
+  static uint8_t step_tick = 0;
 
   // Poll all inputs...
   PollInputs(inputs);
@@ -218,6 +220,7 @@ void loop() {
     mask |= inputs[switched_leds[idx].button].held() << (i+4);
   }
   // boom
+  PORTF = 0;
   PORTF = mask;
   //SetLedSelection(mask);
 
@@ -245,12 +248,6 @@ void loop() {
   if (inputs[CLEAR_KEY].rising()) cv_out = 0;
   if (inputs[BACK_KEY].rising()) step_idx = 0;
 
-  if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
-    // * GENERATE! *
-    step_pitch[step_idx] = random() & 0b11001111;
-    step_time[step_idx] = random();
-  }
-
   if (inputs[UP_KEY].rising()) octave += 1;
   if (inputs[DOWN_KEY].rising()) octave -= 1;
   CONSTRAIN(octave, -2, 2);
@@ -259,18 +256,26 @@ void loop() {
   bool gate_off = false;
   // DIN sync clock @ 24ppqn
   if (inputs[CLOCK].rising()) {
-    const uint8_t clklen = 6 * ((0x3 & step_time[step_idx]) + 1);
-    ++clk_count %= clklen;
+    const uint8_t clklen = ((0x3 & step_time[step_idx]) + 1);
+    ++clk_count %= 24;
 
     if (clk_run) {
-      if (clk_count == 0) {
-        // sync and send quarter notes
-        beat_ms = timer;
-        timer = 0;
-        send_note = true; // send only if running
-        ++step_idx %= 16;
+      if (clk_count % 6 == 0) { // sync
+        //beat_ms = timer; timer = 0;
+        ++step_tick %= clklen;
+
+        if (step_tick == 0) {
+          if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
+            // * GENERATE! *
+            step_pitch[step_idx] = (random() * tracknum) & 0b11001111;
+            step_time[step_idx] = random();
+          }
+          send_note = true;
+          ++step_idx %= 16;
+        }
       }
-      if (clk_count == clklen/2) {
+
+      if (clk_count == 6*clklen/2) {
         gate_off = true;
       }
     }
@@ -279,7 +284,7 @@ void loop() {
     // any keypress sends a note
     if (inputs[pitched_keys[i]].rising()) {
       send_note = true;
-      timer = 0;
+      //timer = 0;
 
       if (write_mode && !track_mode && !time_mode) {
         step_pitch[step_idx] = (24 + i + 12*(octave)) | ((inputs[ACCENT_KEY].held() | inputs[SLIDE_KEY].held() << 1) << 6);
