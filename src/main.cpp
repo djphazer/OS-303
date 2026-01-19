@@ -40,9 +40,10 @@ const uint8_t status_pins[] = {
   PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
 };
 
-// TODO: the PG and PH pins are all part of PORTF on the Teensy,
+// The PG and PH pins are all part of PORTF on the Teensy,
 // which can simply be written as one byte.
-// So each LED in the switchboard matrix can be defined as a byte.
+// Each LED in the switchboard matrix can be defined as series of bytes as addresses.
+// Welcome to CS-450
 const uint8_t led_bytes[16] = {
   // PG  PH
   0b00011110,
@@ -149,6 +150,7 @@ void setup() {
 }
 
 void PollInputs(PinState *inputs) {
+  /*
   digitalWriteFast(select_pin[0], HIGH);
   digitalWriteFast(select_pin[1], HIGH);
   digitalWriteFast(select_pin[2], HIGH);
@@ -158,6 +160,8 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG1_PIN, LOW);
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
+  */
+  PORTF = 0b00001111;
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
@@ -253,7 +257,7 @@ void loop() {
   bool gate_off = false;
   // DIN sync clock @ 24ppqn
   if (inputs[CLOCK].rising()) {
-    const uint8_t clklen = (6*(step_time[step_idx]+1));
+    const uint8_t clklen = 6 * (0x3 & step_time[step_idx] + 1);
     ++clk_count %= clklen;
 
     if (clk_run) {
@@ -262,7 +266,7 @@ void loop() {
         beat_ms = timer;
         timer = 0;
         send_note = true; // send only if running
-        ++step_idx %= 8;
+        ++step_idx %= 16;
       }
       if (clk_count == clklen/2) {
         gate_off = true;
@@ -332,6 +336,11 @@ void loop() {
       ++note_count;
       send_note = false;
     }
+  }
+
+  // catch falling edge of RUN
+  if (inputs[RUN].falling()) {
+    gate_off = true;
   }
 
   // simple gate-off
