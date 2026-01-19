@@ -20,15 +20,17 @@
 //const int MAXPIN = 45;
 
 // pinout with Teensy++ 2.0 fitted
+// - enum symbol names correspond to the TB-303 CPU pins
+// - comments indicate Teensy Port designations
 enum TppPinout : uint8_t {
-  MIDI_IN_PIN = 2,
-  MIDI_OUT_PIN = 3,
+  MIDI_IN_PIN = 2, // PD2
+  MIDI_OUT_PIN = 3, // PD3
 
   // Port C - Data inputs/outputs...?
-  PC0_PIN = 4,
-  PC1_PIN = 5,
-  PC2_PIN = 6,
-  PC3_PIN = 7,
+  PC0_PIN = 4, // PD4
+  PC1_PIN = 5, // PD5
+  PC2_PIN = 6, // PD6
+  PC3_PIN = 7, // PD7
 
   TIMEMODE_LED = PC0_PIN,
   ASHARP_LED = PC1_PIN,
@@ -36,49 +38,49 @@ enum TppPinout : uint8_t {
   FUNCTION_LED = PC3_PIN,
 
   // PI1 is Clock for the CV Out flip-flop, and also enables Slide while held
-  PI1_PIN = 8, // Pitch data latch strobe
-  PI2_PIN = 9, // Gate signal
+  PI1_PIN = 8, // Pitch data latch strobe - PE0
+  PI2_PIN = 9, // Gate signal - PE1
 
   // Ports D & F - memory address to pitch data - CV out
-  PD0_PIN = 10, // bit 0
-  PD1_PIN = 11, // bit 1
-  PD2_PIN = 12, // bit 2
-  PD3_PIN = 13, // bit 3
-  PF0_PIN = 14, // bit 4
-  PF1_PIN = 15, // bit 5
-  PF2_PIN = 16, // memory (unused)
-  PF3_PIN = 17, // memory (unused)
+  PD0_PIN = 10, // bit 0 - PC0
+  PD1_PIN = 11, // bit 1 - PC1
+  PD2_PIN = 12, // bit 2 - PC2
+  PD3_PIN = 13, // bit 3 - PC3
+  PF0_PIN = 14, // bit 4 - PC4
+  PF1_PIN = 15, // bit 5 - PC5
+  PF2_PIN = 16, // memory (unused) - PC6
+  PF3_PIN = 17, // memory (unused) - PC7
 
   // Port E - memory address (probably unused)
-  PE3_PIN = 1,
-  PE2_PIN = 0,
-  PE1_PIN = 19,
-  PE0_PIN = 18, // used for Accent
+  PE3_PIN = 1, // PD1
+  PE2_PIN = 0, // PD0
+  PE1_PIN = 19, // PE7
+  PE0_PIN = 18, // used for Accent - PE6
 
   // Port B - Switch board INPUTS (buttons)
-  PB3_PIN = 27,
-  PB2_PIN = 26,
-  PB1_PIN = 25,
-  PB0_PIN = 24,
+  PB3_PIN = 27, // PB7
+  PB2_PIN = 26, // PB6
+  PB1_PIN = 25, // PB5
+  PB0_PIN = 24, // PB4
 
   // Port A - switched inputs to STATUS (TEMPO CLOCK, START/STOP, TAP)
-  PA3_PIN = 23,
-  PA2_PIN = 22,
-  PA1_PIN = 21,
-  PA0_PIN = 20,
+  PA3_PIN = 23, // PB3
+  PA2_PIN = 22, // PB2
+  PA1_PIN = 21, // PB1
+  PA0_PIN = 20, // PB0
 
   // Port H - switched outputs to STATUS, BUFFER, & GATE
   // These are the mux selectors for PG, PA, and PB
-  PH0_PIN = 38,
-  PH1_PIN = 39,
-  PH2_PIN = 40,
-  PH3_PIN = 41,
+  PH0_PIN = 38, // PF0
+  PH1_PIN = 39, // PF1
+  PH2_PIN = 40, // PF2
+  PH3_PIN = 41, // PF3
 
   // Port G - drive signals to switch board LEDs
-  PG0_PIN = 42, // [1], [DEL], [DOWN], [5]
-  PG1_PIN = 43, // [2], [INS], [UP], [6]
-  PG2_PIN = 44, // [3], [F#], [ACCENT], [7]
-  PG3_PIN = 45, // [4], [G#], [SLIDE], [8]
+  PG0_PIN = 42, // [1], [DEL], [DOWN], [5] - PF4
+  PG1_PIN = 43, // [2], [INS], [UP], [6] - PF5
+  PG2_PIN = 44, // [3], [F#], [ACCENT], [7] - PF6
+  PG3_PIN = 45, // [4], [G#], [SLIDE], [8] - PF7
 };
 
 const uint8_t INPUTS[] = {
