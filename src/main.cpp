@@ -215,10 +215,11 @@ void loop() {
     // one row per tick, cycling through the 4 rows
     const uint8_t idx = cycle*4 + i;
     // show the pressed button for testing
-    mask |= inputs[switched_leds[idx].button].held() << i;
+    mask |= inputs[switched_leds[idx].button].held() << (i+4);
   }
   // boom
-  SetLedSelection(cycle, mask);
+  PORTF = mask;
+  //SetLedSelection(mask);
 
   // extra non-switched LEDs
   SetLed(TIMEMODE_LED, time_mode);
@@ -246,8 +247,8 @@ void loop() {
 
   if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
     // * GENERATE! *
-    step_pitch[step_idx] = random(0xff);
-    step_time[step_idx] = random(0xff);
+    step_pitch[step_idx] = random() & 0b11001111;
+    step_time[step_idx] = random();
   }
 
   if (inputs[UP_KEY].rising()) octave += 1;
@@ -258,7 +259,7 @@ void loop() {
   bool gate_off = false;
   // DIN sync clock @ 24ppqn
   if (inputs[CLOCK].rising()) {
-    const uint8_t clklen = 6 * (0x3 & step_time[step_idx] + 1);
+    const uint8_t clklen = 6 * ((0x3 & step_time[step_idx]) + 1);
     ++clk_count %= clklen;
 
     if (clk_run) {
