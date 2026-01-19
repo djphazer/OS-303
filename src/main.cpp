@@ -121,7 +121,7 @@ void SetLed(PinPair pins, bool enable = true) {
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
 }
 void SetLedSelection(uint8_t select_pin, uint8_t enable_mask = 0) {
-  PORTF = (~(1 << select_pin) & 0xf) | (enable_mask << 4);
+  PORTF = (~(1u << select_pin) & 0xf) | (enable_mask << 4);
   /*
    * the above does this more simply:
   const uint8_t switched_pins[4] = { PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN, };
@@ -162,6 +162,7 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG3_PIN, LOW);
   */
   PORTF = 0b00001111;
+  delayMicroseconds(1);
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
@@ -280,7 +281,7 @@ void loop() {
       timer = 0;
 
       if (write_mode && !track_mode && !time_mode) {
-        step_pitch[step_idx] = (24 + i + 12*(octave)) | (inputs[ACCENT_KEY].held() | inputs[SLIDE_KEY].held() << 1) << 6;
+        step_pitch[step_idx] = (24 + i + 12*(octave)) | ((inputs[ACCENT_KEY].held() | inputs[SLIDE_KEY].held() << 1) << 6);
       }
     }
     if (inputs[pitched_keys[i]].held()) {
@@ -297,7 +298,7 @@ void loop() {
   if (clk_run) {
     // send sequence step
     if (send_note) {
-      const uint8_t note = step_pitch[step_idx] & 0b00111111;
+      const uint8_t note = step_pitch[step_idx];
 
       // DAC for CV Out
       digitalWriteFast(PD0_PIN, (note >> 0) & 1);
