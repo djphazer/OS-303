@@ -163,8 +163,9 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
   */
-  //PORTF |= 0x0f;
+  PORTF = 0x00;
   PORTF = 0x0f;
+  delayMicroseconds(10);
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
@@ -223,7 +224,7 @@ void loop() {
 
   // chasing light for pattern step
   if (clk_run && (step_idx >> 2) == cycle)
-    mask = switched_leds[step_idx % 16].port_byte;
+    mask = led_bytes[step_idx % 16];
 
   for (uint8_t i = 0; i < 4; ++i) {
     // one row per tick, cycling through the 4 rows
@@ -231,9 +232,9 @@ void loop() {
 
     // show pressed button LEDs
     if (inputs[switched_leds[idx].button].held())
-      mask |= switched_leds[idx].port_byte;
+      mask |= led_bytes[idx];
   }
-  //PORTF = 0x0f; // reset to none
+  PORTF = 0x0f; // reset to none
   PORTF = mask; // boom
 
   // extra non-switched LEDs
