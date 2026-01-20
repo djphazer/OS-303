@@ -138,17 +138,15 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask = 0) {
 
 void setup() {
   Serial.begin(9600);
-
-  // -- Pin modes
-  DDRB = 0x00; // inputs for button and status pins
-
-  DDRC = 0xff; // CV output pins
-  DDRD = 0xff; // direct LED output pins
-  DDRE = 0xff; // slide, accent, and gate outs
-  DDRF = 0xff; // outputs for select and LED pins
-
-  // init outputs
-  PORTF = 0x0f; // select pins high, LED pins low
+  for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
+    pinMode(INPUTS[i], INPUT); // pullup?
+  }
+  for (uint8_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
+    pinMode(OUTPUTS[i], OUTPUT);
+  }
+  for (uint8_t i = 0; i < 4; ++i) {
+    digitalWriteFast(select_pin[i], HIGH);
+  }
 }
 
 void PollInputs(PinState *inputs) {
