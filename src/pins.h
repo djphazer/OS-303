@@ -84,17 +84,26 @@ enum TppPinout : uint8_t {
 };
 
 const uint8_t INPUTS[] = {
+  // Teensy Port B
   PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
   PB0_PIN, PB1_PIN, PB2_PIN, PB3_PIN,
 };
 const uint8_t OUTPUTS[] = {
+  // Teensy Port D
   PC0_PIN, PC1_PIN, PC2_PIN, PC3_PIN,
+  PE2_PIN, PE3_PIN,
+
+  // Teensy Port E
+  PE0_PIN, PE1_PIN,
+  PI1_PIN, PI2_PIN,
+
+  // Teensy Port C
   PD0_PIN, PD1_PIN, PD2_PIN, PD3_PIN,
-  PE0_PIN, PE1_PIN, PE2_PIN, PE3_PIN,
   PF0_PIN, PF1_PIN, PF2_PIN, PF3_PIN,
+  // Teensy Port F
   PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
   PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
-  PI1_PIN, PI2_PIN,
+
 };
 
 // switched inputs, polled sequentially
@@ -146,7 +155,7 @@ enum InputIndex : uint8_t {
   CLOCK, // PA4
 
   // I don't think these 4 actually do anything... PB0-PB3
-  //PBUTTON0, PBUTTON1, PBUTTON2, PBUTTON3,
+  PBUTTON0, PBUTTON1, PBUTTON2, PBUTTON3,
 
   INPUT_COUNT,
   EXTRA_PIN_OFFSET = RUN,

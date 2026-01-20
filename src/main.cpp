@@ -50,14 +50,17 @@ const uint8_t led_bytes[16] = {
   0b00101110,
   0b01001110,
   0b10001110,
+
   0b00011101,
   0b00101101,
   0b01001101,
   0b10001101,
+
   0b00011011,
   0b00101011,
   0b01001011,
   0b10001011,
+
   0b00010111,
   0b00100111,
   0b01000111,
@@ -133,20 +136,19 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask = 0) {
 }
 
 
-//void HandleClock() { }
-
 void setup() {
   Serial.begin(9600);
-  for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
-    pinMode(INPUTS[i], INPUT); // pullup?
-  }
-  for (uint8_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
-    pinMode(OUTPUTS[i], OUTPUT);
-  }
-  for (uint8_t i = 0; i < 4; ++i) {
-    digitalWriteFast(select_pin[i], HIGH);
-  }
-  //attachInterrupt(PA3_PIN, HandleClock, RISING);
+
+  // -- Pin modes
+  DDRB = 0x00; // inputs for button and status pins
+
+  DDRC = 0xff; // CV output pins
+  DDRD = 0xff; // direct LED output pins
+  DDRE = 0xff; // slide, accent, and gate outs
+  DDRF = 0xff; // outputs for select and LED pins
+
+  // init outputs
+  PORTF = 0x0f; // select pins high, LED pins low
 }
 
 void PollInputs(PinState *inputs) {
@@ -161,14 +163,14 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
   */
-  PORTF |= 0x0f;
+  //PORTF |= 0x0f;
   PORTF = 0x0f;
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
     inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i])); // PAx
     // not sure if these are actually used...
-    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
+    inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
 
   // open each switched channel with select pin
@@ -183,6 +185,12 @@ void PollInputs(PinState *inputs) {
   }
 }
 
+enum SequencerMode {
+  NORMAL_MODE,
+  PITCH_MODE,
+  TIME_MODE,
+};
+
 void loop() {
   //static elapsedMillis timer = 0;
   //static uint16_t beat_ms = 200;
@@ -195,12 +203,14 @@ void loop() {
   static uint8_t note_count = 0;
   static uint8_t tracknum = 0;
   static bool gate_on = false;
-  static bool time_mode = false;
-  static bool function_mode = false;
+  static uint8_t mode_ = NORMAL_MODE;
+
+  // pattern storage
   static uint8_t step_pitch[16]; // 6-bit Pitch, Accent, and Slide
   static uint8_t step_time[16];
-  static uint8_t step_idx = 0;
-  static uint8_t step_tick = 0;
+
+  static uint8_t step_idx = 0; // which step we're playing/writing
+  static uint8_t step_clk = 0; // clock counter
 
   // Poll all inputs...
   PollInputs(inputs);
@@ -210,40 +220,41 @@ void loop() {
   // --- turn LEDs on asap
   const uint8_t cycle = (ticks & 0x3); // scanner for select pins, bits 0-3
   uint8_t mask = 0;
-  if (clk_run && (step_idx & 0x3) == cycle)
+
+  // chasing light for pattern step
+  if (clk_run && (step_idx >> 2) == cycle)
     mask = switched_leds[step_idx % 16].port_byte;
 
   for (uint8_t i = 0; i < 4; ++i) {
     // one row per tick, cycling through the 4 rows
     const uint8_t idx = cycle*4 + i;
-    // show the pressed button for testing
-    mask |= inputs[switched_leds[idx].button].held() << (i+4);
+
+    // show pressed button LEDs
+    if (inputs[switched_leds[idx].button].held())
+      mask |= switched_leds[idx].port_byte;
   }
-  // boom
-  PORTF = 0;
-  PORTF = mask;
-  //SetLedSelection(mask);
+  //PORTF = 0x0f; // reset to none
+  PORTF = mask; // boom
 
   // extra non-switched LEDs
-  SetLed(TIMEMODE_LED, time_mode);
-  SetLed(PITCHMODE_LED, !time_mode);
-  SetLed(FUNCTION_LED, function_mode);
+  SetLed(TIMEMODE_LED, mode_ == TIME_MODE);
+  SetLed(PITCHMODE_LED, mode_ == PITCH_MODE);
+  SetLed(FUNCTION_LED, mode_ == NORMAL_MODE);
   SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
 
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();
-  const bool fn_mod = inputs[FUNCTION_KEY].rising();
+  const bool fn_mod = inputs[FUNCTION_KEY].held();
+  const bool clear_mod = inputs[CLEAR_KEY].held();
 
   // process all inputs
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2)) + 1;
 
-  if (inputs[TIME_KEY].rising()) time_mode = true;
-  if (inputs[PITCH_KEY].rising()) time_mode = false;
-
-  if (inputs[FUNCTION_KEY].rising()) { }
-  if (inputs[FUNCTION_KEY].falling()) function_mode = !function_mode;
+  if (inputs[TIME_KEY].rising()) mode_ = TIME_MODE;
+  if (inputs[PITCH_KEY].rising()) mode_ = PITCH_MODE;
+  if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
 
   if (inputs[CLEAR_KEY].rising()) cv_out = 0;
   if (inputs[BACK_KEY].rising()) step_idx = 0;
@@ -262,9 +273,9 @@ void loop() {
     if (clk_run) {
       if (clk_count % 6 == 0) { // sync
         //beat_ms = timer; timer = 0;
-        ++step_tick %= clklen;
+        ++step_clk %= clklen;
 
-        if (step_tick == 0) {
+        if (step_clk == 0) {
           if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
             // * GENERATE! *
             step_pitch[step_idx] = (random() * tracknum) & 0b11001111;
@@ -282,11 +293,11 @@ void loop() {
   }
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
-    if (inputs[pitched_keys[i]].rising()) {
+    if (write_mode && inputs[pitched_keys[i]].rising()) {
       send_note = true;
       //timer = 0;
 
-      if (write_mode && !track_mode && !time_mode) {
+      if (!track_mode && mode_ == PITCH_MODE) {
         step_pitch[step_idx] = (24 + i + 12*(octave)) | ((inputs[ACCENT_KEY].held() | inputs[SLIDE_KEY].held() << 1) << 6);
       }
     }
@@ -298,6 +309,16 @@ void loop() {
     }
   }
 
+  // pattern write mode
+  if (write_mode && !track_mode) {
+    if (mode_ == TIME_MODE) {
+      if (inputs[DOWN_KEY].rising())
+        step_time[step_idx] = 1;
+      if (inputs[UP_KEY].rising())
+        step_time[step_idx] = 2;
+    }
+  }
+
   // TODO: rewrite these using two bytes
   // write to PORTC - cv out
   // and PORTE - accent, and send/slide
@@ -305,18 +326,27 @@ void loop() {
     // send sequence step
     if (send_note) {
       const uint8_t note = step_pitch[step_idx];
+      const bool slide = (note >> 7) & 1;
 
       // DAC for CV Out
+      PORTC = note;
+      /*
       digitalWriteFast(PD0_PIN, (note >> 0) & 1);
       digitalWriteFast(PD1_PIN, (note >> 1) & 1);
       digitalWriteFast(PD2_PIN, (note >> 2) & 1);
       digitalWriteFast(PD3_PIN, (note >> 3) & 1);
       digitalWriteFast(PF0_PIN, (note >> 4) & 1);
       digitalWriteFast(PF1_PIN, (note >> 5) & 1);
+      */
 
-      SetAccent((note >> 6) & 1);
-      SendCV((note >> 7) & 1);
-      SetGate(true);
+      //SetAccent((note >> 6) & 1); // bit 6
+      //SendCV(slide); // bit 0
+      //SetGate(true); // bit 1
+
+      PORTE = 0b11 | (note & (1<<6));
+      if (!slide) // turn slide bit back off
+        PORTE = 0b10 | (note & (1<<6));
+
       gate_on = true;
       ++note_count;
       send_note = false;
@@ -327,18 +357,21 @@ void loop() {
 
       // DAC for CV Out
       uint8_t note = 24 + cv_out - 1 + 12*(octave);
-      const bool slide = inputs[SLIDE_KEY].held();
 
+      PORTC = note;
+      /*
       digitalWriteFast(PD0_PIN, (note >> 0) & 1);
       digitalWriteFast(PD1_PIN, (note >> 1) & 1);
       digitalWriteFast(PD2_PIN, (note >> 2) & 1);
       digitalWriteFast(PD3_PIN, (note >> 3) & 1);
       digitalWriteFast(PF0_PIN, (note >> 4) & 1);
       digitalWriteFast(PF1_PIN, (note >> 5) & 1);
+      */
 
       SetAccent(inputs[ACCENT_KEY].held());
-      SendCV(slide);
+      SendCV(inputs[SLIDE_KEY].held());
       SetGate(true);
+
       gate_on = true;
       ++note_count;
       send_note = false;
