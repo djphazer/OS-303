@@ -265,32 +265,40 @@ void loop() {
 
   static bool send_note = true;
   bool gate_off = false;
+
   // DIN sync clock @ 24ppqn
   if (inputs[CLOCK].rising()) {
-    const uint8_t clklen = ((0x3 & step_time[step_idx]) + 1);
-    ++clk_count %= 24;
+    const uint8_t clklen = (1 << (0x1 & step_time[step_idx])); // one or two sixteenth notes
+
+    ++clk_count %= 6;
 
     if (clk_run) {
-      if (clk_count % 6 == 0) { // sync
+      if (clk_count == 0) { // sixteenth note advance
         //beat_ms = timer; timer = 0;
         ++step_clk %= clklen;
+        if (step_clk == 0) { // step advance
+          ++step_idx %= 16;
+          send_note = true;
 
-        if (step_clk == 0) {
+          // hold CLEAR + BACK in write mode to generate random stuff
           if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
             // * GENERATE! *
-            step_pitch[step_idx] = (random() * tracknum) & 0b11001111;
-            step_time[step_idx] = random();
+            if (mode_ == PITCH_MODE)
+              step_pitch[step_idx] = (random() * tracknum) & 0b11001111;
+            else if (mode_ == TIME_MODE)
+              step_time[step_idx] = random();
           }
-          send_note = true;
-          ++step_idx %= 16;
         }
       }
 
-      if (clk_count == 6*clklen/2) {
+      // turn gate off halfway
+      if (clk_count == 3 || step_clk == 1) {
         gate_off = true;
       }
     }
   }
+
+  // check all pitch keys...
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
     if (write_mode && inputs[pitched_keys[i]].rising()) {
@@ -307,6 +315,17 @@ void loop() {
     if (inputs[pitched_keys[i]].falling()) {
       gate_off = true;
     }
+  }
+
+  if (inputs[TAP_NEXT].rising()) {
+    step_idx++;
+    send_note = true;
+  }
+  if (inputs[TAP_NEXT].held()) {
+    gate_off = false;
+  }
+  if (inputs[TAP_NEXT].falling()) {
+    gate_off = true;
   }
 
   // pattern write mode

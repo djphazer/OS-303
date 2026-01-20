@@ -150,7 +150,7 @@ enum InputIndex : uint8_t {
 
   // Extra status pins - read with PH0-PH3 all held high
   RUN, // PA0
-  SOMETHING, // turns on when holding first 4 white keys
+  TAP_NEXT, // turns on when holding first 4 white keys
   NOTHING,
   CLOCK, // PA4
 
