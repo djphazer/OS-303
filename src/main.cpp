@@ -30,8 +30,8 @@ struct PinState {
 };
 
 struct Sequence {
-  uint8_t pitch[MAX_STEPS];
-  uint8_t time[MAX_STEPS];
+  uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
+  uint8_t time[MAX_STEPS];  // 0=rest, 1=note, 2=tie, 3=triplets?
   uint8_t length = 16;
   uint8_t pitch_pos, time_pos;
 
@@ -44,9 +44,29 @@ struct Sequence {
   const bool get_slide() const {
     return pitch[pitch_pos] & (1<<7);
   }
+  const bool is_tied() const {
+    return time_pos < length && time[time_pos+1] == 2;
+  }
 
-  void Regen(int range) {
-    // TODO
+  void SetTime(uint8_t t) {
+    time[time_pos] = t;
+  }
+  void SetPitch(uint8_t p) {
+    // easier to just let the pitch include the accent/slide bits
+    pitch[pitch_pos] = p;
+    // (p & 0x3f) | (pitch[pitch_pos] & 0xc0);
+  }
+  void SetLength(uint8_t len) { length = constrain(len, 1, MAX_STEPS); }
+  bool BumpLength() {
+    if (++length == MAX_STEPS) return false;
+    return true;
+  }
+
+  void RegenTime() {
+    time[time_pos] = random();
+  }
+  void RegenPitch() {
+    pitch[pitch_pos] = random();
   }
 
   void Reset() {
@@ -56,19 +76,13 @@ struct Sequence {
 
   // returns false for rests
   bool Advance() {
-    switch (time[time_pos]) {
-      case 0: // rest
-        ++time_pos;
-        return false;
-      default:
-      case 1: // note
-        ++pitch_pos;
-        ++time_pos;
-        return true;
-      case 2: // tie
-        ++time_pos;
-        return true;
-    }
+    ++time_pos;
+    time_pos %= length;
+    if (time_pos == 0)
+      pitch_pos = 0;
+    else if (time[time_pos] == 1)
+      ++pitch_pos;
+    return time[time_pos];
   }
 };
 
@@ -266,14 +280,12 @@ void loop() {
   static bool gate_on = false;
   static bool slide_on = false;
   static bool send_note = true;
+  static bool step_counter = false;
   static uint8_t mode_ = NORMAL_MODE;
 
   // pattern storage
-  static uint8_t step_pitch[32]; // 6-bit Pitch, Accent, and Slide
-  static uint8_t step_time[32]; // 1-bit for 16th or 8th note? that's it?
-
-  static uint8_t step_idx = 0; // which step we're playing/writing
-  static uint8_t step_clk = 0; // clock counter
+  static Sequence pattern[16]; // 32 steps each
+  static uint8_t p_select = 0;
 
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
@@ -298,9 +310,11 @@ void loop() {
     const uint8_t cycle = (ticks >> 2) & 0x3; // scanner for select pins, bits 0-3
     uint8_t mask = 0;
 
+    // TODO: setting the LEDs needs a lot of work
+
     // chasing light for pattern step
-    if (clk_run && (step_idx >> 2) == cycle)
-      mask = led_bytes[step_idx % 16] >> 4;
+    if (clk_run && (pattern[p_select].time_pos >> 2) == cycle)
+      mask = led_bytes[pattern[p_select].time_pos % 16] >> 4;
 
     if (gate_on) {
       for (uint8_t i = 0; i < 4; ++i) {
@@ -321,7 +335,7 @@ void loop() {
 
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();
-  //const bool fn_mod = inputs[FUNCTION_KEY].held();
+  const bool fn_mod = inputs[FUNCTION_KEY].held();
   //const bool clear_mod = inputs[CLEAR_KEY].held();
 
   // process all inputs
@@ -334,41 +348,46 @@ void loop() {
   if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
 
   if (inputs[CLEAR_KEY].rising()) cv_out = 0;
-  if (inputs[BACK_KEY].rising()) step_idx = 0;
+  if (inputs[BACK_KEY].rising()) pattern[p_select].Reset();
 
-  if (inputs[UP_KEY].rising()) octave += 1;
-  if (inputs[DOWN_KEY].rising()) octave -= 1;
-  CONSTRAIN(octave, -2, 2);
+  if (fn_mod && write_mode) {
+    if (inputs[DOWN_KEY].rising()) {
+      if (step_counter)
+        step_counter = pattern[p_select].BumpLength();
+      else {
+        pattern[p_select].length = 1;
+        step_counter = true;
+      }
+    }
+  } else {
+    if (inputs[UP_KEY].rising()) octave += 1;
+    if (inputs[DOWN_KEY].rising()) octave -= 1;
+    CONSTRAIN(octave, -2, 2);
+  }
 
   bool gate_off = false;
 
   // DIN sync clock @ 24ppqn
   if (inputs[CLOCK].rising()) {
-    const uint8_t clklen = (0x3 & step_time[step_idx]); // rest, note, or tie
-
-    ++clk_count %= 24;
+    ++clk_count %= 6;
 
     if (clk_run) {
-      if (clk_count % 6 == 0) { // sixteenth note advance
-        //beat_ms = timer; timer = 0;
-        ++step_clk %= clklen;
-        if (step_clk == 0) { // step advance
-          ++step_idx %= 16;
-          send_note = true;
+      if (clk_count == 0) { // sixteenth note advance
+        send_note = pattern[p_select].Advance();
+        cv_out = pattern[p_select].get_pitch();
 
-          // hold CLEAR + BACK in write mode to generate random stuff
-          if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
-            // * GENERATE! *
-            if (mode_ == PITCH_MODE)
-              step_pitch[step_idx] = (random() * tracknum) & 0b11001111;
-            else if (mode_ == TIME_MODE)
-              step_time[step_idx] = random();
-          }
+        // hold CLEAR + BACK in write mode to generate random stuff
+        if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
+          // * GENERATE! *
+          if (mode_ == PITCH_MODE)
+            pattern[p_select].RegenPitch();
+          else if (mode_ == TIME_MODE)
+            pattern[p_select].RegenTime();
         }
       }
 
       // turn gate off halfway
-      if (clk_count == 3 && clklen != 2) {
+      if (!slide_on && (clk_count == 3) && !pattern[p_select].is_tied()) {
         gate_off = !slide_on;
       }
     }
@@ -383,26 +402,29 @@ void loop() {
       //timer = 0;
 
       if (write_mode && !track_mode && mode_ == PITCH_MODE) {
-        step_pitch[step_idx] = (24 + i + 12*(octave)) | ((inputs[ACCENT_KEY].held() | inputs[SLIDE_KEY].held() << 1) << 6);
+        pattern[p_select].SetPitch((24 + i + 12 * octave) |
+                                   (inputs[ACCENT_KEY].held() << 6) |
+                                   (inputs[SLIDE_KEY].held() << 7));
       }
     }
     if (inputs[pitched_keys[i]].held()) {
       ++notes_on;
-      cv_out = i+1;
+      cv_out = i+1 + 12*octave;
     }
 
-    if (inputs[pitched_keys[i]].falling() && 0 == notes_on) {
+    if (inputs[pitched_keys[i]].falling()) {
       gate_off = true;
     }
   }
+  gate_off = gate_off && (0 == notes_on);
 
   if (inputs[TAP_NEXT].rising()) {
-    ++step_idx %= 16;
-    cv_out = step_pitch[step_idx] & 0x3f;
-    send_note = true;
+    send_note = pattern[p_select].Advance();
+    cv_out = pattern[p_select].get_pitch();
   }
   if (inputs[TAP_NEXT].held()) {
     gate_off = false;
+    // TODO: check a buncha button actions here
   }
   if (inputs[TAP_NEXT].falling()) {
     gate_off = true;
@@ -411,44 +433,30 @@ void loop() {
   // pattern write mode
   if (write_mode && !track_mode) {
     if (mode_ == TIME_MODE) {
+      if (inputs[ACCENT_KEY].rising())
+        pattern[p_select].SetTime(0);
+
       if (inputs[DOWN_KEY].rising())
-        step_time[step_idx] = 1;
+        pattern[p_select].SetTime(1);
+
       if (inputs[UP_KEY].rising())
-        step_time[step_idx] = 2;
+        pattern[p_select].SetTime(2);
     }
   }
 
-  // TODO: rewrite these using two bytes
-  // write to PORTC - cv out
-  // and PORTE - accent, and send/slide
   if (clk_run) {
     // send sequence step
     if (send_note) {
-      const uint8_t note = step_pitch[step_idx];
-      slide_on = (note >> 7) & 1;
+      slide_on = pattern[p_select].get_slide();
 
       // DAC for CV Out
-      PORTC = note;
-      /*
-      digitalWriteFast(PD0_PIN, (note >> 0) & 1);
-      digitalWriteFast(PD1_PIN, (note >> 1) & 1);
-      digitalWriteFast(PD2_PIN, (note >> 2) & 1);
-      digitalWriteFast(PD3_PIN, (note >> 3) & 1);
-      digitalWriteFast(PF0_PIN, (note >> 4) & 1);
-      digitalWriteFast(PF1_PIN, (note >> 5) & 1);
-      */
+      PORTC = pattern[p_select].get_pitch();
 
       // turn  bits off first
       PORTE = 0x00;
-      PORTE = 0b11 | (note & (1<<6));
+      PORTE = 0b11 | pattern[p_select].get_accent();
       if (!slide_on) // turn slide bit back off
         PORTE ^= 1;
-
-      /*
-      SetAccent((note >> 6) & 1); // bit 6
-      SendCV(slide_on); // bit 0
-      SetGate(true); // bit 1
-      */
 
       gate_on = true;
       ++note_count;
