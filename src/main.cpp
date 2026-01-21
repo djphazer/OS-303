@@ -286,6 +286,7 @@ void loop() {
   // pattern storage
   static Sequence pattern[16]; // 32 steps each
   static uint8_t p_select = 0;
+  static uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
 
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
@@ -341,7 +342,7 @@ void loop() {
   // process all inputs
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
            | (inputs[TRACK_BIT1].held() << 1)
-           | (inputs[TRACK_BIT2].held() << 2)) + 1;
+           | (inputs[TRACK_BIT2].held() << 2));
 
   if (inputs[TIME_KEY].rising()) mode_ = TIME_MODE;
   if (inputs[PITCH_KEY].rising()) mode_ = PITCH_MODE;
@@ -492,6 +493,8 @@ void loop() {
   if (gate_on && gate_off) {
     //delay(1); // to mimic real 303, the gate off should be 1ms late
     SetGate(false);
+    PORTE ^= 1;
+    PORTE ^= 1;
     gate_on = false;
   }
 
