@@ -131,6 +131,7 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
     PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
   };
 
+  PORTF = 0x0f;
   digitalWriteFast(select_pin, LOW);
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
@@ -154,16 +155,21 @@ void setup() {
 }
 
 void PollInputs(PinState *inputs) {
+  //PORTF = 0x00;
+  PORTF = 0x0f;
+  //PORTF = 0xff;
+
+  /*
   digitalWriteFast(select_pin[0], HIGH);
   digitalWriteFast(select_pin[1], HIGH);
   digitalWriteFast(select_pin[2], HIGH);
   digitalWriteFast(select_pin[3], HIGH);
-
   // all LEDs
   digitalWriteFast(PG0_PIN, HIGH);
   digitalWriteFast(PG1_PIN, HIGH);
   digitalWriteFast(PG2_PIN, HIGH);
   digitalWriteFast(PG3_PIN, HIGH);
+  */
 
   //delay(1);
 
@@ -174,10 +180,14 @@ void PollInputs(PinState *inputs) {
     //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
 
+  PORTF = 0x0f;
+
+  /*
   digitalWriteFast(PG0_PIN, LOW);
   digitalWriteFast(PG1_PIN, LOW);
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
+  */
 
   // open each switched channel with select pin
   for (uint8_t i = 0; i < 4; ++i) {
@@ -214,14 +224,15 @@ void loop() {
   static uint8_t mode_ = NORMAL_MODE;
 
   // pattern storage
-  static uint8_t step_pitch[16]; // 6-bit Pitch, Accent, and Slide
-  static uint8_t step_time[16];
+  static uint8_t step_pitch[32]; // 6-bit Pitch, Accent, and Slide
+  static uint8_t step_time[32]; // 1-bit for 16th or 8th note? that's it?
 
   static uint8_t step_idx = 0; // which step we're playing/writing
   static uint8_t step_clk = 0; // clock counter
 
-  // Poll all inputs...
-  PollInputs(inputs);
+  // Poll all inputs... every 4 ticks
+  if ((ticks & 0x03) == 0)
+    PollInputs(inputs);
 
   const bool clk_run = inputs[RUN].held();
   if (inputs[RUN].rising()) {
@@ -253,6 +264,7 @@ void loop() {
       mask |= inputs[switched_leds[idx].button].held() << i;
     }
   }
+
   SetLedSelection(switched_leds[cycle*4].select, mask);
   // extra non-switched LEDs
   SetLed(TIMEMODE_LED, mode_ == TIME_MODE);
@@ -338,7 +350,7 @@ void loop() {
   }
 
   if (inputs[TAP_NEXT].rising()) {
-    step_idx++;
+    ++step_idx %= 16;
     cv_out = step_pitch[step_idx] & 0x3f;
     send_note = true;
   }
@@ -399,11 +411,12 @@ void loop() {
 
       // DAC for CV Out
       uint8_t note = 24 + cv_out - 1 + 12*(octave);
+      slide_on = inputs[SLIDE_KEY].held();
 
       PORTC = note;
 
       SetAccent(inputs[ACCENT_KEY].held());
-      SendCV(inputs[SLIDE_KEY].held());
+      SendCV(slide_on);
       SetGate(true);
 
       gate_on = true;
