@@ -223,15 +223,17 @@ void loop() {
 
   // chasing light for pattern step
   if (clk_run && (step_idx >> 2) == cycle)
-    mask = led_bytes[step_idx % 16];
+    mask = led_bytes[step_idx % 16] >> 4;
 
-  for (uint8_t i = 0; i < 4; ++i) {
-    // one row per tick, cycling through the 4 rows
-    const uint8_t idx = (ticks & 0x3)*4 + i;
-    // show the pressed button for testing
-    mask |= inputs[switched_leds[idx].button].held() << i;
+  if (gate_on) {
+    for (uint8_t i = 0; i < 4; ++i) {
+      // one row per tick, cycling through the 4 rows
+      const uint8_t idx = cycle*4 + i;
+      // show the pressed button for testing
+      mask |= inputs[switched_leds[idx].button].held() << i;
+    }
   }
-  SetLedSelection(switched_leds[(ticks & 0x3)*4].select, gate_on ? mask : 0);
+  SetLedSelection(switched_leds[cycle*4].select, mask);
   // extra non-switched LEDs
   SetLed(TIMEMODE_LED, mode_ == TIME_MODE);
   SetLed(PITCHMODE_LED, mode_ == PITCH_MODE);
@@ -240,8 +242,8 @@ void loop() {
 
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();
-  const bool fn_mod = inputs[FUNCTION_KEY].held();
-  const bool clear_mod = inputs[CLEAR_KEY].held();
+  //const bool fn_mod = inputs[FUNCTION_KEY].held();
+  //const bool clear_mod = inputs[CLEAR_KEY].held();
 
   // process all inputs
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
@@ -297,11 +299,11 @@ void loop() {
   // check all pitch keys...
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
-    if (write_mode && inputs[pitched_keys[i]].rising()) {
+    if (inputs[pitched_keys[i]].rising()) {
       send_note = true;
       //timer = 0;
 
-      if (!track_mode && mode_ == PITCH_MODE) {
+      if (write_mode && !track_mode && mode_ == PITCH_MODE) {
         step_pitch[step_idx] = (24 + i + 12*(octave)) | ((inputs[ACCENT_KEY].held() | inputs[SLIDE_KEY].held() << 1) << 6);
       }
     }

@@ -118,15 +118,15 @@ enum InputIndex : uint8_t {
   B_KEY,
   C_KEY2, // 7 - PB3 with PH1 low
 
-  DOWN_KEY, // 8 - PH2 low
+  DOWN_KEY, // 8 - PB0 + PH2 low
   UP_KEY,
   ACCENT_KEY,
-  SLIDE_KEY,
+  SLIDE_KEY, // 11 - PB3 + PH2 low
 
   FSHARP_KEY, // 12 - PB0 with PH3 low
   GSHARP_KEY,
   ASHARP_KEY,
-  BACK_KEY, // PB3 with PH3 low
+  BACK_KEY, // 15 - PB3 with PH3 low
 
   WRITE_MODE, // 16 - PA0 with PH0 low
   TRACK_SEL,
