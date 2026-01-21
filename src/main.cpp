@@ -12,7 +12,7 @@ struct PinPair {
   uint8_t led, button, pitch;
 };
 struct MatrixPin {
-  uint8_t port_byte, pitch;
+  uint8_t select, led, pitch;
   InputIndex button;
 };
 struct PinState {
@@ -67,26 +67,26 @@ const uint8_t led_bytes[16] = {
   0b10000111,
 };
 const MatrixPin switched_leds[16] = {
-  // port_byte,   pitch, Button,
-  {led_bytes[0],  1, C_KEY}, // [1] key, C
-  {led_bytes[1],  3, D_KEY}, // [2] key, D
-  {led_bytes[2],  5, E_KEY}, // [3] key, E
-  {led_bytes[3],  6, F_KEY}, // [4] key, F
+  // select,  LED,   pitch, Button,
+  {PH0_PIN, PG0_PIN,  1, C_KEY}, // [1] key, C
+  {PH0_PIN, PG1_PIN,  3, D_KEY}, // [2] key, D
+  {PH0_PIN, PG2_PIN,  5, E_KEY}, // [3] key, E
+  {PH0_PIN, PG3_PIN,  6, F_KEY}, // [4] key, F
 
-  {led_bytes[4],  8, G_KEY}, // [5] key, G
-  {led_bytes[5], 10, A_KEY}, // [6] key, A
-  {led_bytes[6], 12, B_KEY}, // [7] key, B
-  {led_bytes[7], 13, C_KEY2}, // [8] key, C2
+  {PH1_PIN, PG0_PIN,  8, G_KEY}, // [5] key, G
+  {PH1_PIN, PG1_PIN, 10, A_KEY}, // [6] key, A
+  {PH1_PIN, PG2_PIN, 12, B_KEY}, // [7] key, B
+  {PH1_PIN, PG3_PIN, 13, C_KEY2}, // [8] key, C2
 
-  {led_bytes[8],  0, DOWN_KEY}, // [9] or [DOWN]
-  {led_bytes[9],  0, UP_KEY}, // [0] or [UP]
-  {led_bytes[10],  0, ACCENT_KEY}, // [100] or [ACCENT]
-  {led_bytes[11],  0, SLIDE_KEY}, // [200] or [SLIDE]
+  {PH2_PIN, PG0_PIN,  0, DOWN_KEY}, // [9] or [DOWN]
+  {PH2_PIN, PG1_PIN,  0, UP_KEY}, // [0] or [UP]
+  {PH2_PIN, PG2_PIN,  0, ACCENT_KEY}, // [100] or [ACCENT]
+  {PH2_PIN, PG3_PIN,  0, SLIDE_KEY}, // [200] or [SLIDE]
 
-  {led_bytes[12],  2, CSHARP_KEY}, // [DEL] or C#
-  {led_bytes[13],  4, DSHARP_KEY}, // [INS] or D#
-  {led_bytes[14],  7, FSHARP_KEY}, // F#
-  {led_bytes[15],  9, GSHARP_KEY}, // G#
+  {PH3_PIN, PG0_PIN,  2, CSHARP_KEY}, // [DEL] or C#
+  {PH3_PIN, PG1_PIN,  4, DSHARP_KEY}, // [INS] or D#
+  {PH3_PIN, PG2_PIN,  7, FSHARP_KEY}, // F#
+  {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
 };
 const PinPair main_leds[4] = {
   // led,           button,     pitch
@@ -123,18 +123,24 @@ void SetLed(uint8_t pin, bool enable = true) {
 void SetLed(PinPair pins, bool enable = true) {
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
 }
-void SetLedSelection(uint8_t select_pin, uint8_t enable_mask = 0) {
-  PORTF = (~(1u << select_pin) & 0xf) | (enable_mask << 4);
-  /*
-   * the above does this more simply:
-  const uint8_t switched_pins[4] = { PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN, };
+void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
+  const uint8_t switched_pins[4] = {
+    PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
+  };
+
   digitalWriteFast(select_pin, LOW);
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
   }
-  */
+}
+void SetLed(MatrixPin pins, bool enable = true) {
+  if (enable) digitalWriteFast(pins.select, LOW);
+  digitalWriteFast(pins.led, enable ? HIGH : LOW);
+  if (enable) digitalWriteFast(pins.select, HIGH);
 }
 
+
+//void HandleClock() { }
 
 void setup() {
   Serial.begin(9600);
@@ -150,7 +156,6 @@ void setup() {
 }
 
 void PollInputs(PinState *inputs) {
-  /*
   digitalWriteFast(select_pin[0], HIGH);
   digitalWriteFast(select_pin[1], HIGH);
   digitalWriteFast(select_pin[2], HIGH);
@@ -160,16 +165,12 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG1_PIN, LOW);
   digitalWriteFast(PG2_PIN, LOW);
   digitalWriteFast(PG3_PIN, LOW);
-  */
-  PORTF = 0x00;
-  PORTF = 0x0f;
-  delayMicroseconds(10);
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
     inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i])); // PAx
     // not sure if these are actually used...
-    inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
+    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
 
   // open each switched channel with select pin
@@ -226,15 +227,11 @@ void loop() {
 
   for (uint8_t i = 0; i < 4; ++i) {
     // one row per tick, cycling through the 4 rows
-    const uint8_t idx = cycle*4 + i;
-
-    // show pressed button LEDs
-    if (inputs[switched_leds[idx].button].held())
-      mask |= led_bytes[idx];
+    const uint8_t idx = (ticks & 0x3)*4 + i;
+    // show the pressed button for testing
+    mask |= inputs[switched_leds[idx].button].held() << i;
   }
-  PORTF = 0x0f; // reset to none
-  PORTF = mask; // boom
-
+  SetLedSelection(switched_leds[(ticks & 0x3)*4].select, gate_on ? mask : 0);
   // extra non-switched LEDs
   SetLed(TIMEMODE_LED, mode_ == TIME_MODE);
   SetLed(PITCHMODE_LED, mode_ == PITCH_MODE);
