@@ -109,11 +109,9 @@ void SendCV(bool slide = false) {
 }
 
 void SetGate(bool on) {
-  digitalWriteFast(PI2_PIN, on? HIGH : LOW);
+  digitalWriteFast(PI2_PIN, on ? HIGH : LOW);
 }
-
 void SetAccent(bool on) {
-  // Accent seems to use PE0
   digitalWriteFast(PE0_PIN, on ? HIGH : LOW);
 }
 
@@ -122,6 +120,11 @@ void SetLed(uint8_t pin, bool enable = true) {
 }
 void SetLed(PinPair pins, bool enable = true) {
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
+}
+void SetLed(MatrixPin pins, bool enable = true) {
+  if (enable) digitalWriteFast(pins.select, LOW);
+  digitalWriteFast(pins.led, enable ? HIGH : LOW);
+  if (enable) digitalWriteFast(pins.select, HIGH);
 }
 void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
   const uint8_t switched_pins[4] = {
@@ -132,11 +135,6 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
   }
-}
-void SetLed(MatrixPin pins, bool enable = true) {
-  if (enable) digitalWriteFast(pins.select, LOW);
-  digitalWriteFast(pins.led, enable ? HIGH : LOW);
-  if (enable) digitalWriteFast(pins.select, HIGH);
 }
 
 
@@ -160,11 +158,14 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(select_pin[1], HIGH);
   digitalWriteFast(select_pin[2], HIGH);
   digitalWriteFast(select_pin[3], HIGH);
-  // turn all LEDs off first
-  digitalWriteFast(PG0_PIN, LOW);
-  digitalWriteFast(PG1_PIN, LOW);
-  digitalWriteFast(PG2_PIN, LOW);
-  digitalWriteFast(PG3_PIN, LOW);
+
+  // all LEDs
+  digitalWriteFast(PG0_PIN, HIGH);
+  digitalWriteFast(PG1_PIN, HIGH);
+  digitalWriteFast(PG2_PIN, HIGH);
+  digitalWriteFast(PG3_PIN, HIGH);
+
+  //delay(1);
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
@@ -172,6 +173,11 @@ void PollInputs(PinState *inputs) {
     // not sure if these are actually used...
     //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
+
+  digitalWriteFast(PG0_PIN, LOW);
+  digitalWriteFast(PG1_PIN, LOW);
+  digitalWriteFast(PG2_PIN, LOW);
+  digitalWriteFast(PG3_PIN, LOW);
 
   // open each switched channel with select pin
   for (uint8_t i = 0; i < 4; ++i) {
@@ -281,10 +287,10 @@ void loop() {
   if (inputs[CLOCK].rising()) {
     const uint8_t clklen = (1 << (0x1 & step_time[step_idx])); // one or two sixteenth notes
 
-    ++clk_count %= 6;
+    ++clk_count %= 24;
 
     if (clk_run) {
-      if (clk_count == 0) { // sixteenth note advance
+      if (clk_count % 6 == 0) { // sixteenth note advance
         //beat_ms = timer; timer = 0;
         ++step_clk %= clklen;
         if (step_clk == 0) { // step advance
@@ -304,12 +310,13 @@ void loop() {
 
       // turn gate off halfway
       if (clk_count == 3 || step_clk == 1) {
-        gate_off = true;
+        gate_off = !slide_on;
       }
     }
   }
 
   // check all pitch keys...
+  uint8_t notes_on = 0;
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
     if (inputs[pitched_keys[i]].rising()) {
@@ -321,15 +328,18 @@ void loop() {
       }
     }
     if (inputs[pitched_keys[i]].held()) {
+      ++notes_on;
       cv_out = i+1;
     }
-    if (inputs[pitched_keys[i]].falling()) {
+
+    if (inputs[pitched_keys[i]].falling() && 0 == notes_on) {
       gate_off = true;
     }
   }
 
   if (inputs[TAP_NEXT].rising()) {
     step_idx++;
+    cv_out = step_pitch[step_idx] & 0x3f;
     send_note = true;
   }
   if (inputs[TAP_NEXT].held()) {
