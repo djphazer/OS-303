@@ -7,6 +7,8 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
+static constexpr int MAX_STEPS = 32;
+
 // data + function bundles, aka structs
 struct PinPair {
   uint8_t led, button, pitch;
@@ -25,6 +27,49 @@ struct PinState {
   const bool rising() const { return (state & 0x03) == 0x01; }
   const bool falling() const { return (state & 0x03) == 0x02; }
   const bool held() const { return state & 0x03; }
+};
+
+struct Sequence {
+  uint8_t pitch[MAX_STEPS];
+  uint8_t time[MAX_STEPS];
+  uint8_t length = 16;
+  uint8_t pitch_pos, time_pos;
+
+  const uint8_t get_pitch() const {
+    return pitch[pitch_pos] & 0x3f;
+  }
+  const uint8_t get_accent() const {
+    return pitch[pitch_pos] & (1<<6);
+  }
+  const bool get_slide() const {
+    return pitch[pitch_pos] & (1<<7);
+  }
+
+  void Regen(int range) {
+    // TODO
+  }
+
+  void Reset() {
+    pitch_pos = 0;
+    time_pos = 0;
+  }
+
+  // returns false for rests
+  bool Advance() {
+    switch (time[time_pos]) {
+      case 0: // rest
+        ++time_pos;
+        return false;
+      default:
+      case 1: // note
+        ++pitch_pos;
+        ++time_pos;
+        return true;
+      case 2: // tie
+        ++time_pos;
+        return true;
+    }
+  }
 };
 
 //
@@ -132,6 +177,7 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
   };
 
   PORTF = 0x0f;
+  delayMicroseconds(15);
   digitalWriteFast(select_pin, LOW);
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
@@ -157,6 +203,7 @@ void setup() {
 void PollInputs(PinState *inputs) {
   //PORTF = 0x00;
   PORTF = 0x0f;
+  delayMicroseconds(15);
   //PORTF = 0xff;
 
   /*
@@ -171,8 +218,6 @@ void PollInputs(PinState *inputs) {
   digitalWriteFast(PG3_PIN, HIGH);
   */
 
-  //delay(1);
-
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
     inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i])); // PAx
@@ -180,7 +225,7 @@ void PollInputs(PinState *inputs) {
     //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
 
-  PORTF = 0x0f;
+  //PORTF = 0x0f;
 
   /*
   digitalWriteFast(PG0_PIN, LOW);
@@ -192,7 +237,7 @@ void PollInputs(PinState *inputs) {
   // open each switched channel with select pin
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], LOW); // PHx
-    for (int j = 0; j < 4; ++j) {
+    for (uint8_t j = 0; j < 4; ++j) {
       // read pins
       inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j])); // PBx
       inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j])); // PAx
@@ -230,9 +275,9 @@ void loop() {
   static uint8_t step_idx = 0; // which step we're playing/writing
   static uint8_t step_clk = 0; // clock counter
 
-  // Poll all inputs... every 4 ticks
-  if ((ticks & 0x03) == 0)
-    PollInputs(inputs);
+  // Poll all inputs... every single tick
+  //if ((ticks & 0x03) == 0)
+  PollInputs(inputs);
 
   const bool clk_run = inputs[RUN].held();
   if (inputs[RUN].rising()) {
@@ -248,29 +293,31 @@ void loop() {
     }
   }
 
-  // --- turn LEDs on asap
-  const uint8_t cycle = (ticks & 0x3); // scanner for select pins, bits 0-3
-  uint8_t mask = 0;
+  // --- turn LEDs on every 4 ticks
+  if ((ticks & 0x03) == 1) {
+    const uint8_t cycle = (ticks >> 2) & 0x3; // scanner for select pins, bits 0-3
+    uint8_t mask = 0;
 
-  // chasing light for pattern step
-  if (clk_run && (step_idx >> 2) == cycle)
-    mask = led_bytes[step_idx % 16] >> 4;
+    // chasing light for pattern step
+    if (clk_run && (step_idx >> 2) == cycle)
+      mask = led_bytes[step_idx % 16] >> 4;
 
-  if (gate_on) {
-    for (uint8_t i = 0; i < 4; ++i) {
-      // one row per tick, cycling through the 4 rows
-      const uint8_t idx = cycle*4 + i;
-      // show the pressed button for testing
-      mask |= inputs[switched_leds[idx].button].held() << i;
+    if (gate_on) {
+      for (uint8_t i = 0; i < 4; ++i) {
+        // one row per tick, cycling through the 4 rows
+        const uint8_t idx = cycle*4 + i;
+        // show the pressed button for testing
+        mask |= inputs[switched_leds[idx].button].held() << i;
+      }
     }
-  }
 
-  SetLedSelection(switched_leds[cycle*4].select, mask);
-  // extra non-switched LEDs
-  SetLed(TIMEMODE_LED, mode_ == TIME_MODE);
-  SetLed(PITCHMODE_LED, mode_ == PITCH_MODE);
-  SetLed(FUNCTION_LED, mode_ == NORMAL_MODE);
-  SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
+    SetLedSelection(switched_leds[cycle*4].select, mask);
+    // extra non-switched LEDs
+    SetLed(TIMEMODE_LED, mode_ == TIME_MODE);
+    SetLed(PITCHMODE_LED, mode_ == PITCH_MODE);
+    SetLed(FUNCTION_LED, mode_ == NORMAL_MODE);
+    SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
+  }
 
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();
@@ -297,7 +344,7 @@ void loop() {
 
   // DIN sync clock @ 24ppqn
   if (inputs[CLOCK].rising()) {
-    const uint8_t clklen = (1 << (0x1 & step_time[step_idx])); // one or two sixteenth notes
+    const uint8_t clklen = (0x3 & step_time[step_idx]); // rest, note, or tie
 
     ++clk_count %= 24;
 
@@ -321,7 +368,7 @@ void loop() {
       }
 
       // turn gate off halfway
-      if (clk_count == 3 || step_clk == 1) {
+      if (clk_count == 3 && clklen != 2) {
         gate_off = !slide_on;
       }
     }
@@ -391,15 +438,17 @@ void loop() {
       digitalWriteFast(PF1_PIN, (note >> 5) & 1);
       */
 
-      /*
-      // TODO turn slide bit off first
+      // turn  bits off first
+      PORTE = 0x00;
       PORTE = 0b11 | (note & (1<<6));
       if (!slide_on) // turn slide bit back off
-        PORTE = 0b10 | (note & (1<<6));
-      */
+        PORTE ^= 1;
+
+      /*
       SetAccent((note >> 6) & 1); // bit 6
       SendCV(slide_on); // bit 0
       SetGate(true); // bit 1
+      */
 
       gate_on = true;
       ++note_count;
@@ -410,14 +459,15 @@ void loop() {
     if (send_note && cv_out) {
 
       // DAC for CV Out
-      uint8_t note = 24 + cv_out - 1 + 12*(octave);
+      uint8_t note = 24 + cv_out - 1 + 12*octave;
       slide_on = inputs[SLIDE_KEY].held();
 
       PORTC = note;
 
-      SetAccent(inputs[ACCENT_KEY].held());
-      SendCV(slide_on);
-      SetGate(true);
+      PORTE = 0x00; // turn gate/slide/accent bits off first
+      PORTE = 0b11 | (inputs[ACCENT_KEY].held() << 6);
+      if (!slide_on) // turn slide bit back off
+        PORTE ^= 1;
 
       gate_on = true;
       ++note_count;
