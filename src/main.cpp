@@ -203,6 +203,8 @@ void loop() {
   static uint8_t note_count = 0;
   static uint8_t tracknum = 0;
   static bool gate_on = false;
+  static bool slide_on = false;
+  static bool send_note = true;
   static uint8_t mode_ = NORMAL_MODE;
 
   // pattern storage
@@ -216,6 +218,18 @@ void loop() {
   PollInputs(inputs);
 
   const bool clk_run = inputs[RUN].held();
+  if (inputs[RUN].rising()) {
+    Serial.println("CLOCK RUN STARTED");
+  }
+  if (inputs[RUN].falling()) {
+    Serial.println("CLOCK STOPPED");
+  }
+
+  if (Serial.available() && Serial.read()) {
+    for (uint8_t i = 0; i < INPUT_COUNT/2; ++i) {
+      Serial.printf("Input #%2u = %x   |  Input #%2u = %x\n", i, inputs[i].state, i + INPUT_COUNT/2, inputs[i + INPUT_COUNT/2].state);
+    }
+  }
 
   // --- turn LEDs on asap
   const uint8_t cycle = (ticks & 0x3); // scanner for select pins, bits 0-3
@@ -261,7 +275,6 @@ void loop() {
   if (inputs[DOWN_KEY].rising()) octave -= 1;
   CONSTRAIN(octave, -2, 2);
 
-  static bool send_note = true;
   bool gate_off = false;
 
   // DIN sync clock @ 24ppqn
@@ -343,7 +356,7 @@ void loop() {
     // send sequence step
     if (send_note) {
       const uint8_t note = step_pitch[step_idx];
-      const bool slide = (note >> 7) & 1;
+      slide_on = (note >> 7) & 1;
 
       // DAC for CV Out
       PORTC = note;
@@ -356,13 +369,15 @@ void loop() {
       digitalWriteFast(PF1_PIN, (note >> 5) & 1);
       */
 
-      //SetAccent((note >> 6) & 1); // bit 6
-      //SendCV(slide); // bit 0
-      //SetGate(true); // bit 1
-
+      /*
+      // TODO turn slide bit off first
       PORTE = 0b11 | (note & (1<<6));
-      if (!slide) // turn slide bit back off
+      if (!slide_on) // turn slide bit back off
         PORTE = 0b10 | (note & (1<<6));
+      */
+      SetAccent((note >> 6) & 1); // bit 6
+      SendCV(slide_on); // bit 0
+      SetGate(true); // bit 1
 
       gate_on = true;
       ++note_count;
@@ -376,14 +391,6 @@ void loop() {
       uint8_t note = 24 + cv_out - 1 + 12*(octave);
 
       PORTC = note;
-      /*
-      digitalWriteFast(PD0_PIN, (note >> 0) & 1);
-      digitalWriteFast(PD1_PIN, (note >> 1) & 1);
-      digitalWriteFast(PD2_PIN, (note >> 2) & 1);
-      digitalWriteFast(PD3_PIN, (note >> 3) & 1);
-      digitalWriteFast(PF0_PIN, (note >> 4) & 1);
-      digitalWriteFast(PF1_PIN, (note >> 5) & 1);
-      */
 
       SetAccent(inputs[ACCENT_KEY].held());
       SendCV(inputs[SLIDE_KEY].held());
