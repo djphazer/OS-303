@@ -17,6 +17,7 @@
  * PI2 is Gate out
  */
 
+#include <Arduino.h>
 //const int MAXPIN = 45;
 
 // pinout with Teensy++ 2.0 fitted
@@ -159,4 +160,107 @@ enum InputIndex : uint8_t {
 
   INPUT_COUNT,
   EXTRA_PIN_OFFSET = RUN,
+};
+
+
+//
+// --- useful pin correlations ---
+//
+const uint8_t select_pin[4] = {
+  PH0_PIN, PH1_PIN, PH2_PIN, PH3_PIN,
+};
+const uint8_t button_pins[4] = {
+  PB0_PIN, PB1_PIN, PB2_PIN, PB3_PIN,
+};
+const uint8_t status_pins[] = {
+  PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
+};
+
+// The PG and PH pins are all part of PORTF on the Teensy,
+// which can simply be written as one byte.
+// Each LED in the switchboard matrix can be defined as series of bytes as addresses.
+// Welcome to CS-450
+const uint8_t led_bytes[16] = {
+  // PG  PH
+  0b00011110,
+  0b00101110,
+  0b01001110,
+  0b10001110,
+
+  0b00011101,
+  0b00101101,
+  0b01001101,
+  0b10001101,
+
+  0b00011011,
+  0b00101011,
+  0b01001011,
+  0b10001011,
+
+  0b00010111,
+  0b00100111,
+  0b01000111,
+  0b10000111,
+};
+
+// data + function bundles
+struct PinPair {
+  uint8_t led, button, pitch;
+};
+struct MatrixPin {
+  uint8_t select, led, pitch;
+  InputIndex button;
+};
+
+enum SignalState {
+  STATE_OFF     = 0x00,
+  STATE_RISING  = 0x01,
+  STATE_FALLING = 0x02,
+  STATE_ON      = 0x03,
+};
+struct PinState {
+  uint8_t state = 0; // shiftreg
+  void push(bool high) {
+    state = (state << 1) | high;
+  }
+  // using simple 2-bit rise/fall detection
+  // I don't think we need debouncing
+  const bool rising() const { return (state & 0x03) == STATE_RISING; }
+  const bool falling() const { return (state & 0x03) == STATE_FALLING; }
+  const bool held() const { return state & STATE_ON; }
+};
+
+// more useful correlations
+const MatrixPin switched_leds[16] = {
+  // select,  LED,   pitch, Button,
+  {PH0_PIN, PG0_PIN,  1, C_KEY}, // [1] key, C
+  {PH0_PIN, PG1_PIN,  3, D_KEY}, // [2] key, D
+  {PH0_PIN, PG2_PIN,  5, E_KEY}, // [3] key, E
+  {PH0_PIN, PG3_PIN,  6, F_KEY}, // [4] key, F
+
+  {PH1_PIN, PG0_PIN,  8, G_KEY}, // [5] key, G
+  {PH1_PIN, PG1_PIN, 10, A_KEY}, // [6] key, A
+  {PH1_PIN, PG2_PIN, 12, B_KEY}, // [7] key, B
+  {PH1_PIN, PG3_PIN, 13, C_KEY2}, // [8] key, C2
+
+  {PH2_PIN, PG0_PIN,  0, DOWN_KEY}, // [9] or [DOWN]
+  {PH2_PIN, PG1_PIN,  0, UP_KEY}, // [0] or [UP]
+  {PH2_PIN, PG2_PIN,  0, ACCENT_KEY}, // [100] or [ACCENT]
+  {PH2_PIN, PG3_PIN,  0, SLIDE_KEY}, // [200] or [SLIDE]
+
+  {PH3_PIN, PG0_PIN,  2, CSHARP_KEY}, // [DEL] or C#
+  {PH3_PIN, PG1_PIN,  4, DSHARP_KEY}, // [INS] or D#
+  {PH3_PIN, PG2_PIN,  7, FSHARP_KEY}, // F#
+  {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
+};
+const PinPair main_leds[4] = {
+  // led,           button,     pitch
+  {TIMEMODE_LED,    TIME_KEY,   0},
+  {ASHARP_LED,      ASHARP_KEY, 11},
+  {PITCHMODE_LED,   PITCH_KEY,  0},
+  {FUNCTION_LED,    FUNCTION_KEY,   0},
+};
+const InputIndex pitched_keys[] = {
+  C_KEY, CSHARP_KEY, D_KEY, DSHARP_KEY, E_KEY, F_KEY, FSHARP_KEY,
+  G_KEY, GSHARP_KEY, A_KEY, ASHARP_KEY, B_KEY, C_KEY2
 };
