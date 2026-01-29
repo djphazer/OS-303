@@ -167,6 +167,9 @@ struct Engine {
   bool get_slide() const {
     return pattern[p_select].get_slide();
   }
+  uint8_t get_time_pos() const {
+    return pattern[p_select].time_pos;
+  }
 
   // setters
   void SetMode(SequencerMode m) {

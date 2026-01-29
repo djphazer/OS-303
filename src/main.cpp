@@ -2,12 +2,15 @@
 #include "pins.h"
 #include "engine.h"
 
+#define DEBUG 0
+
 //
 // *** Utilities ***
 //
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
+static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
 
 // util functions
 void SendCV(bool slide = false) {
@@ -27,13 +30,20 @@ void SetAccent(bool on) {
 void SetLed(uint8_t pin, bool enable = true) {
   digitalWriteFast(pin, enable ? HIGH : LOW);
 }
-void SetLed(PinPair pins, bool enable = true) {
+void SetLed(const MatrixPin pins, bool enable = true) {
+  if (enable && pins.select) digitalWriteFast(pins.select, LOW);
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
+  if (enable && pins.select) digitalWriteFast(pins.select, HIGH);
 }
-void SetLed(MatrixPin pins, bool enable = true) {
-  if (enable) digitalWriteFast(pins.select, LOW);
-  digitalWriteFast(pins.led, enable ? HIGH : LOW);
-  if (enable) digitalWriteFast(pins.select, HIGH);
+
+void FlashLed(const MatrixPin led) {
+  static elapsedMillis timer = 0;
+  static bool onoff = false;
+  if (timer > 100) {
+    // blah blah
+    SetLed(led, onoff);
+    onoff = !onoff;
+  }
 }
 void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
   const uint8_t switched_pins[4] = {
@@ -41,7 +51,7 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
   };
 
   PORTF = 0x0f;
-  delayMicroseconds(15);
+  delayMicroseconds(SWITCH_DELAY);
   digitalWriteFast(select_pin, LOW);
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
@@ -62,12 +72,16 @@ void setup() {
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], HIGH);
   }
+
+  // TODO:
+  //const uint8_t ledseq[] = { PITCHMODE_LED, CSHARP_LED, DSHARP_KEY };
+  //for (uint8_t i = 0; i < 16; ++i) { }
 }
 
 void PollInputs(PinState *inputs) {
   //PORTF = 0x00;
   PORTF = 0x0f;
-  delayMicroseconds(15);
+  delayMicroseconds(SWITCH_DELAY);
   //PORTF = 0xff;
 
   /*
@@ -110,27 +124,31 @@ void PollInputs(PinState *inputs) {
   }
 }
 
+// -=- globals -=-
+static uint8_t ticks = 0;
+
+static PinState inputs[INPUT_COUNT];
+
+static uint8_t tracknum = 0;
+static bool gate_on = false;
+static bool send_note = true;
+static bool step_counter = false;
+
+// this is where the magic happens
+static Engine engine;
+
+//static elapsedMillis timer = 0;
+//static uint16_t beat_ms = 200;
+
+
 void loop() {
-  //static elapsedMillis timer = 0;
-  //static uint16_t beat_ms = 200;
-
-  static PinState inputs[INPUT_COUNT];
-
-  static uint8_t ticks = 0;
-
-  static uint8_t tracknum = 0;
-  static bool gate_on = false;
-  static bool send_note = true;
-  static bool step_counter = false;
-
-  // this is where the magic happens
-  static Engine engine;
-
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
   PollInputs(inputs);
 
   const bool clk_run = inputs[RUN].held();
+
+#if DEBUG
   if (inputs[RUN].rising()) {
     Serial.println("CLOCK RUN STARTED");
   }
@@ -143,6 +161,7 @@ void loop() {
       Serial.printf("Input #%2u = %x   |  Input #%2u = %x\n", i, inputs[i].state, i + INPUT_COUNT/2, inputs[i + INPUT_COUNT/2].state);
     }
   }
+#endif
 
   // --- turn LEDs on every 4 ticks
   if ((ticks & 0x03) == 1) {
@@ -152,15 +171,16 @@ void loop() {
     // TODO: setting the LEDs needs a lot of work
 
     // chasing light for pattern step
-    //if (clk_run && (pattern[p_select].time_pos >> 2) == cycle)
-      //mask = led_bytes[pattern[p_select].time_pos % 16] >> 4;
+    if (clk_run && (engine.get_time_pos() >> 2) == cycle)
+      mask = led_bytes[engine.get_time_pos() % 16] >> 4;
 
     if (gate_on) {
       for (uint8_t i = 0; i < 4; ++i) {
         // one row per tick, cycling through the 4 rows
         const uint8_t idx = cycle*4 + i;
+
         // show the pressed button for testing
-        mask |= inputs[switched_leds[idx].button].held() << i;
+        //mask |= inputs[switched_leds[idx].button].held() << i;
       }
     }
 
@@ -175,7 +195,7 @@ void loop() {
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();
   const bool fn_mod = inputs[FUNCTION_KEY].held();
-  //const bool clear_mod = inputs[CLEAR_KEY].held();
+  const bool clear_mod = inputs[CLEAR_KEY].held();
   const bool edit_mode = inputs[TAP_NEXT].held();
 
   // process all inputs
@@ -219,7 +239,7 @@ void loop() {
 
     if (send_note) {
       // hold CLEAR + BACK in write mode to generate random stuff
-      if (!track_mode && write_mode && inputs[CLEAR_KEY].held() && inputs[BACK_KEY].held()) {
+      if (!track_mode && write_mode && clear_mod && inputs[BACK_KEY].held()) {
         // TODO: * GENERATE! *
         engine.Generate();
       }

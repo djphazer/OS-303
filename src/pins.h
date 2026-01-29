@@ -253,12 +253,12 @@ const MatrixPin switched_leds[16] = {
   {PH3_PIN, PG2_PIN,  7, FSHARP_KEY}, // F#
   {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
 };
-const PinPair main_leds[4] = {
-  // led,           button,     pitch
-  {TIMEMODE_LED,    TIME_KEY,   0},
-  {ASHARP_LED,      ASHARP_KEY, 11},
-  {PITCHMODE_LED,   PITCH_KEY,  0},
-  {FUNCTION_LED,    FUNCTION_KEY,   0},
+const MatrixPin main_leds[4] = {
+  // select, led,         pitch, button
+  {0,        TIMEMODE_LED,    0, TIME_KEY},
+  {0,        ASHARP_LED,     11, ASHARP_KEY},
+  {0,        PITCHMODE_LED,   0, PITCH_KEY},
+  {0,        FUNCTION_LED,    0, FUNCTION_KEY},
 };
 const InputIndex pitched_keys[] = {
   C_KEY, CSHARP_KEY, D_KEY, DSHARP_KEY, E_KEY, F_KEY, FSHARP_KEY,
