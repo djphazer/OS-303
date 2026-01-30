@@ -22,6 +22,8 @@ void SendCV(bool slide = false) {
 
 void SetGate(bool on) {
   digitalWriteFast(PI2_PIN, on ? HIGH : LOW);
+  PORTE ^= 1;
+  PORTE ^= 1;
 }
 void SetAccent(bool on) {
   digitalWriteFast(PE0_PIN, on ? HIGH : LOW);
@@ -31,9 +33,12 @@ void SetLed(uint8_t pin, bool enable = true) {
   digitalWriteFast(pin, enable ? HIGH : LOW);
 }
 void SetLed(const MatrixPin pins, bool enable = true) {
-  if (enable && pins.select) digitalWriteFast(pins.select, LOW);
+  if (enable && pins.select) {
+    PORTF = 0x0f;
+    digitalWriteFast(pins.select, LOW);
+  }
   digitalWriteFast(pins.led, enable ? HIGH : LOW);
-  if (enable && pins.select) digitalWriteFast(pins.select, HIGH);
+  //if (enable && pins.select) digitalWriteFast(pins.select, HIGH);
 }
 
 void FlashLed(const MatrixPin led) {
@@ -199,7 +204,7 @@ void loop() {
     // a unified array of all LEDs states - like a framebuffer
 
     // chasing light for pattern step
-    if (clk_run && (engine.get_time_pos() >> 2) == cycle)
+    if (clk_run && (engine.get_time_pos() >> 2) == cycle && gate_on)
       mask = led_bytes[engine.get_time_pos() % 8] >> 4;
 
     if (gate_on) {
@@ -208,7 +213,7 @@ void loop() {
         const uint8_t idx = cycle*4 + i;
 
         // show the pressed button for testing
-        //mask |= inputs[switched_leds[idx].button].held() << i;
+        mask |= inputs[switched_leds[idx].button].held() << i;
       }
     }
 
@@ -294,6 +299,7 @@ void loop() {
     if (inputs[pitched_keys[i]].falling()) {
       engine.NoteOff(i);
       gate_off = true;
+      --notes_on;
     }
   }
   gate_off = gate_off && (0 == notes_on);
@@ -304,9 +310,11 @@ void loop() {
   if (edit_mode) {
     gate_off = false;
     // TODO: check a buncha button actions here
-    if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
-    if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
-    // etc.
+    if (write_mode) {
+      if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
+      if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
+      // etc.
+    }
   }
   if (inputs[TAP_NEXT].falling()) {
     gate_off = true;
@@ -343,9 +351,10 @@ void loop() {
     }
     if (gate_on && !engine.get_gate()) {
       // turn just the gate bit off
-      PORTE &= ~0b10;
-      //SetGate(false);
+      //PORTE &= ~0b10;
+      SetGate(false);
       gate_on = false;
+      gate_off = false;
     }
   } else {
     // not run mode - send notes from keys

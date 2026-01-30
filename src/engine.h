@@ -95,7 +95,7 @@ struct Engine {
   uint8_t p_select = 0;
 
   uint8_t mode_ = NORMAL_MODE;
-  uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
+  //uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
 
   uint8_t clk_count = 0;
 
