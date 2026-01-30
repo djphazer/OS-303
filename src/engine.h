@@ -99,7 +99,7 @@ struct Engine {
 
   uint8_t clk_count = 0;
 
-  uint8_t cv_out = 0; // semitone
+  uint8_t cv_out_ = 0; // semitone
   int8_t octave_ = 0;
 
   bool slide_on = false; // flag to keep raised
@@ -147,9 +147,13 @@ struct Engine {
   }
 
   // handle input - semitone from 0-11
-  void NoteOn(uint8_t pitch) {
+  void NoteOn(int pitch) {
+    cv_out_ = pitch + octave_ * 12 + 36;
+    gate_on = true;
   }
   void NoteOff(uint8_t pitch) {
+    if (cv_out_ == pitch + octave_ * 12 + 36)
+      gate_on = false;
   }
 
   // getters
@@ -169,6 +173,12 @@ struct Engine {
   }
   uint8_t get_time_pos() const {
     return pattern[p_select].time_pos;
+  }
+  uint8_t get_patsel() const {
+    return p_select;
+  }
+  void SetPattern(uint8_t p_) {
+    p_select = constrain(p_, 0, 15);
   }
 
   // setters

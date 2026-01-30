@@ -231,7 +231,7 @@ struct PinState {
 };
 
 // more useful correlations
-const MatrixPin switched_leds[16] = {
+const MatrixPin switched_leds[16 + 4] = {
   // select,  LED,   pitch, Button,
   {PH0_PIN, PG0_PIN,  1, C_KEY}, // [1] key, C
   {PH0_PIN, PG1_PIN,  3, D_KEY}, // [2] key, D
@@ -252,6 +252,12 @@ const MatrixPin switched_leds[16] = {
   {PH3_PIN, PG1_PIN,  4, DSHARP_KEY}, // [INS] or D#
   {PH3_PIN, PG2_PIN,  7, FSHARP_KEY}, // F#
   {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
+
+  // direct LEDs that don't need a select pin
+  {0,        TIMEMODE_LED,    0, TIME_KEY},
+  {0,        ASHARP_LED,     11, ASHARP_KEY},
+  {0,        PITCHMODE_LED,   0, PITCH_KEY},
+  {0,        FUNCTION_LED,    0, FUNCTION_KEY},
 };
 const MatrixPin main_leds[4] = {
   // select, led,         pitch, button

@@ -12,7 +12,7 @@
 
 static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
 
-// util functions
+// driver functions
 void SendCV(bool slide = false) {
   // Clock for the D/A converter chip
   if (slide) digitalWriteFast(PI1_PIN, LOW);
@@ -56,26 +56,6 @@ void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
   }
-}
-
-
-//void HandleClock() { }
-
-void setup() {
-  Serial.begin(9600);
-  for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
-    pinMode(INPUTS[i], INPUT); // pullup?
-  }
-  for (uint8_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
-    pinMode(OUTPUTS[i], OUTPUT);
-  }
-  for (uint8_t i = 0; i < 4; ++i) {
-    digitalWriteFast(select_pin[i], HIGH);
-  }
-
-  // TODO:
-  //const uint8_t ledseq[] = { PITCHMODE_LED, CSHARP_LED, DSHARP_KEY };
-  //for (uint8_t i = 0; i < 16; ++i) { }
 }
 
 void PollInputs(PinState *inputs) {
@@ -124,7 +104,7 @@ void PollInputs(PinState *inputs) {
   }
 }
 
-// -=- globals -=-
+// -=-=- Globals -=-=-
 static uint8_t ticks = 0;
 
 static PinState inputs[INPUT_COUNT];
@@ -140,6 +120,52 @@ static Engine engine;
 //static elapsedMillis timer = 0;
 //static uint16_t beat_ms = 200;
 
+
+// ===== MAIN CODE LOGIC =====
+
+void setup() {
+  Serial.begin(9600);
+  for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
+    pinMode(INPUTS[i], INPUT); // pullup?
+  }
+  for (uint8_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
+    pinMode(OUTPUTS[i], OUTPUT);
+  }
+  for (uint8_t i = 0; i < 4; ++i) {
+    digitalWriteFast(select_pin[i], HIGH);
+  }
+
+  const MatrixPin ledseq[] = {
+    switched_leds[16 + 2],
+    switched_leds[8],
+    switched_leds[9],
+    switched_leds[10],
+    switched_leds[11],
+    switched_leds[16 + 1],
+    switched_leds[16 + 0],
+    switched_leds[15],
+    switched_leds[14],
+    switched_leds[13],
+    switched_leds[12],
+    switched_leds[7],
+    switched_leds[6],
+    switched_leds[5],
+    switched_leds[4],
+    switched_leds[3],
+    switched_leds[2],
+    switched_leds[1],
+    switched_leds[0],
+  };
+  int x = 3;
+  do {
+    for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
+      SetLed(ledseq[i], true);
+      delay(20);
+      SetLed(ledseq[i], false);
+      delay(10);
+    }
+  } while (--x > 0);
+}
 
 void loop() {
   // Poll all inputs... every single tick
@@ -169,10 +195,12 @@ void loop() {
     uint8_t mask = 0;
 
     // TODO: setting the LEDs needs a lot of work
+    // probably a function to compose a mask in complex ways
+    // a unified array of all LEDs states - like a framebuffer
 
     // chasing light for pattern step
     if (clk_run && (engine.get_time_pos() >> 2) == cycle)
-      mask = led_bytes[engine.get_time_pos() % 16] >> 4;
+      mask = led_bytes[engine.get_time_pos() % 8] >> 4;
 
     if (gate_on) {
       for (uint8_t i = 0; i < 4; ++i) {
