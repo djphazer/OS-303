@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "pins.h"
 #include "engine.h"
+#include "MIDI.h"
 
 #define DEBUG 0
 
@@ -11,6 +12,8 @@
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
 static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
+
+MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 // driver functions
 void SendCV(bool slide = false) {
@@ -129,7 +132,9 @@ static Engine engine;
 // ===== MAIN CODE LOGIC =====
 
 void setup() {
-  Serial.begin(9600);
+  Serial1.begin(31250);
+  MIDI.begin(MIDI_CHANNEL_OMNI);
+
   for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
     pinMode(INPUTS[i], INPUT); // pullup?
   }
@@ -139,6 +144,8 @@ void setup() {
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], HIGH);
   }
+
+  Serial.begin(9600);
 
   const MatrixPin ledseq[] = {
     switched_leds[16 + 2],
@@ -266,8 +273,27 @@ void loop() {
     gate_off = true;
   }
 
+  // process all MIDI here
+  bool clocked = false;
+  static bool midi_clk = false;
+  while (MIDI.read()) {
+    if (MIDI.getType() == midi::MidiType::Clock) {
+      clocked = true;
+    }
+    if (MIDI.getType() == midi::MidiType::Start) {
+      midi_clk = true;
+    }
+    if (MIDI.getType() == midi::MidiType::Stop) {
+      midi_clk = false;
+    }
+  }
+
   // DIN sync clock @ 24ppqn
-  if (inputs[CLOCK].rising() && clk_run) {
+  if (!midi_clk) {
+    clocked = inputs[CLOCK].rising();
+  }
+
+  if (clocked && clk_run) {
     send_note = engine.Clock(); // true is like a rising edge
 
     if (send_note) {
