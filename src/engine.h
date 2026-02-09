@@ -160,7 +160,8 @@ struct Engine {
   uint8_t get_mode() const { return mode_; }
 
   bool get_gate() const {
-    return delay_timer > 0 && (clk_count < 4 || slide_on);
+    return //delay_timer > 0 && 
+      (clk_count < 4 || slide_on);
   }
   bool get_accent() const {
     return pattern[p_select].get_accent() && clk_count < 3;

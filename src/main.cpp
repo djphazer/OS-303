@@ -208,11 +208,11 @@ void loop() {
 
     // TODO: setting the LEDs needs a lot of work
     // probably a function to compose a mask in complex ways
-    // a unified array of all LEDs states - like a framebuffer
+    // a unified array of all LEDs states - like a framebuffer/driver
 
     // chasing light for pattern step
-    if (clk_run && (engine.get_time_pos() >> 2) == cycle && gate_on)
-      mask = led_bytes[engine.get_time_pos() % 8] >> 4;
+    if (clk_run && (engine.get_time_pos() >> 2) == cycle)
+      mask = led_bytes[engine.get_time_pos() & 0x7] >> 4;
 
     if (gate_on) {
       for (uint8_t i = 0; i < 4; ++i) {
