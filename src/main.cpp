@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Nicholas J. Michalek
+//
+
 #include <Arduino.h>
 #include "pins.h"
 #include "drivers.h"

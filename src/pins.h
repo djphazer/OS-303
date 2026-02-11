@@ -1,3 +1,4 @@
+// Copyright (c) 2026, Nicholas J. Michalek
 //
 // these symbols should help make sense of the TB-303 CPU pinouts
 //

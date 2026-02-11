@@ -1,3 +1,5 @@
+// Copyright (c) 2026, Nicholas J. Michalek
+
 #pragma once
 #include "pins.h"
 

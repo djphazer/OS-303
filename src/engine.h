@@ -1,6 +1,6 @@
+// Copyright (c) 2026, Nicholas J. Michalek
 /* 
- * Sequencer engine logic for 303
- *   by djphazer (Nicholas J. Michalek)
+ * Sequencer engine logic and data model for TB-303 CPU
  */
 
 #pragma once
