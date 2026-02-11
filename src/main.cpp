@@ -74,9 +74,9 @@ void setup() {
   int x = 3;
   do {
     for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
-      Leds::SetLed(ledseq[i], true);
+      Leds::Set(ledseq[i], true);
       delay(20);
-      Leds::SetLed(ledseq[i], false);
+      Leds::Set(ledseq[i], false);
       delay(10);
     }
   } while (--x > 0);
@@ -104,7 +104,7 @@ void loop() {
   }
 #endif
 
-  // --- turn LEDs on every 4 ticks
+  // --- update LEDs on every 4 ticks
   if ((ticks & 0x03) == 1) {
     const uint8_t cycle = (ticks >> 2) & 0x3; // scanner for select pins, bits 0-3
     uint8_t mask = 0;
@@ -129,11 +129,13 @@ void loop() {
 
     Leds::SetLedSelection(switched_leds[cycle*4].select, mask);
     // extra non-switched LEDs
-    Leds::SetLed(TIMEMODE_LED, engine.get_mode() == TIME_MODE);
-    Leds::SetLed(PITCHMODE_LED, engine.get_mode() == PITCH_MODE);
-    Leds::SetLed(FUNCTION_LED, engine.get_mode() == NORMAL_MODE);
-    Leds::SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
+    Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE);
+    Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE);
+    Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE);
+    Leds::Set(ASHARP_KEY_LED, gate_on && inputs[ASHARP_KEY].held());
   }
+
+  Leds::Send(ticks);
 
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();

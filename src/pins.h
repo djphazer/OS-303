@@ -30,15 +30,10 @@ enum TppPinout : uint8_t {
   MIDI_OUT_PIN = 3, // PD3
 
   // Port C - Data inputs/outputs...?
-  PC0_PIN = 4, // PD4
-  PC1_PIN = 5, // PD5
-  PC2_PIN = 6, // PD6
-  PC3_PIN = 7, // PD7
-
-  TIMEMODE_LED = PC0_PIN,
-  ASHARP_LED = PC1_PIN,
-  PITCHMODE_LED = PC2_PIN,
-  FUNCTION_LED = PC3_PIN,
+  PC0_PIN = 4, // PD4 - Time Mode LED
+  PC1_PIN = 5, // PD5 - A# key LED
+  PC2_PIN = 6, // PD6 - Pitch Mode LED
+  PC3_PIN = 7, // PD7 - Function LED
 
   // PI1 is Clock for the CV Out flip-flop, and also enables Slide while held
   PI1_PIN = 8, // Pitch data latch strobe - PE0
@@ -256,19 +251,38 @@ const MatrixPin switched_leds[16 + 4] = {
   {PH3_PIN, PG3_PIN,  9, GSHARP_KEY}, // G#
 
   // direct LEDs that don't need a select pin
-  {0,        TIMEMODE_LED,    0, TIME_KEY},
-  {0,        ASHARP_LED,     11, ASHARP_KEY},
-  {0,        PITCHMODE_LED,   0, PITCH_KEY},
-  {0,        FUNCTION_LED,    0, FUNCTION_KEY},
-};
-const MatrixPin main_leds[4] = {
-  // select, led,         pitch, button
-  {0,        TIMEMODE_LED,    0, TIME_KEY},
-  {0,        ASHARP_LED,     11, ASHARP_KEY},
-  {0,        PITCHMODE_LED,   0, PITCH_KEY},
-  {0,        FUNCTION_LED,    0, FUNCTION_KEY},
+  {0,       PC0_PIN,  0, TIME_KEY},
+  {0,       PC1_PIN, 11, ASHARP_KEY},
+  {0,       PC2_PIN,  0, PITCH_KEY},
+  {0,       PC3_PIN,  0, FUNCTION_KEY},
 };
 const InputIndex pitched_keys[] = {
   C_KEY, CSHARP_KEY, D_KEY, DSHARP_KEY, E_KEY, F_KEY, FSHARP_KEY,
   G_KEY, GSHARP_KEY, A_KEY, ASHARP_KEY, B_KEY, C_KEY2
+};
+
+// index into switched_leds array
+enum OutputIndex {
+  C_KEY_LED,
+  D_KEY_LED,
+  E_KEY_LED,
+  F_KEY_LED,
+  G_KEY_LED,
+  A_KEY_LED,
+  B_KEY_LED,
+  C_KEY2_LED,
+  DOWN_KEY_LED,
+  UP_KEY_LED,
+  ACCENT_KEY_LED,
+  SLIDE_KEY_LED,
+  CSHARP_KEY_LED,
+  DSHARP_KEY_LED,
+  FSHARP_KEY_LED,
+  GSHARP_KEY_LED,
+  TIME_MODE_LED,
+  ASHARP_KEY_LED,
+  PITCH_MODE_LED,
+  FUNCTION_MODE_LED,
+
+  TOTAL_LEDS
 };

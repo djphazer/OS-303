@@ -3,7 +3,7 @@
 #pragma once
 #include "pins.h"
 
-static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
+static constexpr uint16_t SWITCH_DELAY = 10; // microseconds
 
 //
 // --- 303 CPU driver functions
@@ -25,12 +25,15 @@ void SetAccent(bool on) {
 }
 
 namespace Leds {
-  uint8_t ledstate[4] = {0}; // like a framebuffer
+  // like a framebuffer, each bit corresponds to an entry in the switched_leds table
+  uint8_t ledstate[3] = {0};
 
-  void SetLed(uint8_t pin, bool enable = true) {
-    digitalWriteFast(pin, enable ? HIGH : LOW);
+  void Set(OutputIndex ledidx, bool enable = true) {
+    const uint8_t bit_idx = ledidx & 0x7;
+    const uint8_t row = ledidx >> 3;
+    ledstate[row] = (ledstate[row] & ~(1 << bit_idx)) | (enable << bit_idx);
   }
-  void SetLed(const MatrixPin pins, bool enable = true) {
+  void Set(const MatrixPin pins, bool enable = true) {
     if (enable && pins.select) {
       PORTF = 0x0f;
       digitalWriteFast(pins.select, LOW);
@@ -44,7 +47,7 @@ namespace Leds {
     static bool onoff = false;
     if (timer > 100) {
       // blah blah
-      SetLed(led, onoff);
+      Set(led, onoff);
       onoff = !onoff;
       timer = 0;
     }
@@ -62,10 +65,20 @@ namespace Leds {
     }
   }
 
-  void Send() {
-    // TODO:
+  void Send(const uint8_t tick) {
+    // switched LEDs
+    // which row depends on tick
+    uint8_t mask = ledstate[(tick >> 3) & 1] >> (4 * ((tick >> 2) & 1));
+    for (uint8_t i = 0; i < 4; ++i) {
+      SetLedSelection(switched_leds[i + ((tick >> 2) & 0x3)].select, mask);
+    }
+    // direct LEDs
+    for (uint8_t i = 16; i < 20; ++i) {
+      digitalWriteFast(switched_leds[i].led, (ledstate[2] & (1 << (i-16))) ? HIGH : LOW);
+    }
   }
-}
+
+} // namespace Leds
 
 void PollInputs(PinState *inputs) {
   //PORTF = 0x00;
