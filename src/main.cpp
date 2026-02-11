@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "pins.h"
+#include "drivers.h"
 #include "engine.h"
 #include "MIDI.h"
 
@@ -11,106 +12,8 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
-static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
-
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
-// driver functions
-void SendCV(bool slide = false) {
-  // Clock for the D/A converter chip
-  if (slide) digitalWriteFast(PI1_PIN, LOW);
-  digitalWriteFast(PI1_PIN, HIGH);
-  if (!slide) digitalWriteFast(PI1_PIN, LOW);
-}
-
-void SetGate(bool on) {
-  digitalWriteFast(PI2_PIN, on ? HIGH : LOW);
-  PORTE ^= 1;
-  PORTE ^= 1;
-}
-void SetAccent(bool on) {
-  digitalWriteFast(PE0_PIN, on ? HIGH : LOW);
-}
-
-void SetLed(uint8_t pin, bool enable = true) {
-  digitalWriteFast(pin, enable ? HIGH : LOW);
-}
-void SetLed(const MatrixPin pins, bool enable = true) {
-  if (enable && pins.select) {
-    PORTF = 0x0f;
-    digitalWriteFast(pins.select, LOW);
-  }
-  digitalWriteFast(pins.led, enable ? HIGH : LOW);
-  //if (enable && pins.select) digitalWriteFast(pins.select, HIGH);
-}
-
-void FlashLed(const MatrixPin led) {
-  static elapsedMillis timer = 0;
-  static bool onoff = false;
-  if (timer > 100) {
-    // blah blah
-    SetLed(led, onoff);
-    onoff = !onoff;
-  }
-}
-void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
-  const uint8_t switched_pins[4] = {
-    PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
-  };
-
-  PORTF = 0x0f;
-  delayMicroseconds(SWITCH_DELAY);
-  digitalWriteFast(select_pin, LOW);
-  for (uint8_t i = 0; i < 4; ++i) {
-    digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
-  }
-}
-
-void PollInputs(PinState *inputs) {
-  //PORTF = 0x00;
-  PORTF = 0x0f;
-  delayMicroseconds(SWITCH_DELAY);
-  //PORTF = 0xff;
-
-  /*
-  digitalWriteFast(select_pin[0], HIGH);
-  digitalWriteFast(select_pin[1], HIGH);
-  digitalWriteFast(select_pin[2], HIGH);
-  digitalWriteFast(select_pin[3], HIGH);
-  // all LEDs
-  digitalWriteFast(PG0_PIN, HIGH);
-  digitalWriteFast(PG1_PIN, HIGH);
-  digitalWriteFast(PG2_PIN, HIGH);
-  digitalWriteFast(PG3_PIN, HIGH);
-  */
-
-  // read PA and PB pins while select pins are high
-  for (uint8_t i = 0; i < 4; ++i) {
-    inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i])); // PAx
-    // not sure if these are actually used...
-    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
-  }
-
-  //PORTF = 0x0f;
-
-  /*
-  digitalWriteFast(PG0_PIN, LOW);
-  digitalWriteFast(PG1_PIN, LOW);
-  digitalWriteFast(PG2_PIN, LOW);
-  digitalWriteFast(PG3_PIN, LOW);
-  */
-
-  // open each switched channel with select pin
-  for (uint8_t i = 0; i < 4; ++i) {
-    digitalWriteFast(select_pin[i], LOW); // PHx
-    for (uint8_t j = 0; j < 4; ++j) {
-      // read pins
-      inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j])); // PBx
-      inputs[16 + i*4 + j].push(digitalReadFast(status_pins[j])); // PAx
-    }
-    digitalWriteFast(select_pin[i], HIGH); // PHx
-  }
-}
 
 // -=-=- Globals -=-=-
 static uint8_t ticks = 0;
@@ -124,9 +27,6 @@ static bool step_counter = false;
 
 // this is where the magic happens
 static Engine engine;
-
-//static elapsedMillis timer = 0;
-//static uint16_t beat_ms = 200;
 
 
 // ===== MAIN CODE LOGIC =====
@@ -171,9 +71,9 @@ void setup() {
   int x = 3;
   do {
     for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
-      SetLed(ledseq[i], true);
+      Leds::SetLed(ledseq[i], true);
       delay(20);
-      SetLed(ledseq[i], false);
+      Leds::SetLed(ledseq[i], false);
       delay(10);
     }
   } while (--x > 0);
@@ -224,12 +124,12 @@ void loop() {
       }
     }
 
-    SetLedSelection(switched_leds[cycle*4].select, mask);
+    Leds::SetLedSelection(switched_leds[cycle*4].select, mask);
     // extra non-switched LEDs
-    SetLed(TIMEMODE_LED, engine.get_mode() == TIME_MODE);
-    SetLed(PITCHMODE_LED, engine.get_mode() == PITCH_MODE);
-    SetLed(FUNCTION_LED, engine.get_mode() == NORMAL_MODE);
-    SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
+    Leds::SetLed(TIMEMODE_LED, engine.get_mode() == TIME_MODE);
+    Leds::SetLed(PITCHMODE_LED, engine.get_mode() == PITCH_MODE);
+    Leds::SetLed(FUNCTION_LED, engine.get_mode() == NORMAL_MODE);
+    Leds::SetLed(ASHARP_LED, gate_on && inputs[ASHARP_KEY].held());
   }
 
   const bool track_mode = inputs[TRACK_SEL].held();
@@ -312,7 +212,6 @@ void loop() {
     if (inputs[pitched_keys[i]].rising()) {
       engine.NoteOn(i);
       send_note = true;
-      //timer = 0;
 
       if (write_mode && !track_mode && engine.get_mode() == PITCH_MODE) {
         engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) | (inputs[SLIDE_KEY].held() << 7));

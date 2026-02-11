@@ -17,6 +17,7 @@
  * PI2 is Gate out
  */
 
+#pragma once
 #include <Arduino.h>
 //const int MAXPIN = 45;
 

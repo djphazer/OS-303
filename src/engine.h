@@ -3,6 +3,7 @@
  *   by djphazer (Nicholas J. Michalek)
  */
 
+#pragma once
 #include <Arduino.h>
 #include <EEPROM.h>
 
