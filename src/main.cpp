@@ -88,6 +88,11 @@ void loop() {
   PollInputs(inputs);
 
   const bool clk_run = inputs[RUN].held();
+  const bool track_mode = inputs[TRACK_SEL].held();
+  const bool write_mode = inputs[WRITE_MODE].held();
+  const bool fn_mod = inputs[FUNCTION_KEY].held();
+  const bool clear_mod = inputs[CLEAR_KEY].held();
+  const bool edit_mode = inputs[TAP_NEXT].held();
 
 #if DEBUG
   if (inputs[RUN].rising()) {
@@ -105,40 +110,29 @@ void loop() {
 #endif
 
   // --- update LEDs on every 4 ticks
-  if ((ticks & 0x03) == 1) {
-    const uint8_t cycle = (ticks >> 2) & 0x3; // scanner for select pins, bits 0-3
-    uint8_t mask = 0;
+  //if ((ticks & 0x03) == 1) {
+    //const uint8_t cycle = (ticks >> 2) & 0x3; // scanner for select pins, bits 0-3
+    //uint8_t mask = 0;
+  //}
 
-    // TODO: setting the LEDs needs a lot of work
-    // probably a function to compose a mask in complex ways
-    // a unified array of all LEDs states - like a framebuffer/driver
-
-    // chasing light for pattern step
-    if (clk_run) {
-      Leds::Set(engine.get_time_pos() & 0x7, true);
-      //mask = led_bytes[engine.get_time_pos() & 0x7] >> 4;
-    }
-
-    for (uint8_t i = 0; i < 16; ++i) {
-      // show all pressed buttons
-      if (inputs[switched_leds[i].button].held())
-        Leds::Set(i, true);
-    }
-
-    // extra non-switched LEDs
-    Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE);
-    Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE);
-    Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE);
-    Leds::Set(ASHARP_KEY_LED, gate_on && inputs[ASHARP_KEY].held());
+  // chasing light for pattern step
+  if (clk_run && write_mode) {
+    Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
   }
 
-  Leds::Send(ticks);
+  for (uint8_t i = 0; i < 16; ++i) {
+    // show all pressed buttons
+    if (inputs[switched_leds[i].button].held())
+      Leds::Set(OutputIndex(i), true);
+  }
 
-  const bool track_mode = inputs[TRACK_SEL].held();
-  const bool write_mode = inputs[WRITE_MODE].held();
-  const bool fn_mod = inputs[FUNCTION_KEY].held();
-  const bool clear_mod = inputs[CLEAR_KEY].held();
-  const bool edit_mode = inputs[TAP_NEXT].held();
+  // extra non-switched LEDs
+  Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE);
+  Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE);
+  Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE);
+  Leds::Set(ASHARP_KEY_LED, inputs[ASHARP_KEY].held() || (gate_on && (engine.get_pitch() % 12 == 10)));
+
+  Leds::Send(ticks); // hardware output, framebuffer reset
 
   // process all inputs
   tracknum = uint8_t(inputs[TRACK_BIT0].held()

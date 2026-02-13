@@ -70,10 +70,9 @@ namespace Leds {
 
     // switched LEDs
     // which row depends on tick
-    uint8_t mask = ledstate[(tick >> 3) & 1] >> (4 * ((tick >> 2) & 1));
-    for (uint8_t i = 0; i < 4; ++i) {
-      SetLedSelection(switched_leds[i + ((tick >> 2) & 0x3)].select, mask);
-    }
+    uint8_t mask = ledstate[(tick >> 1) & 1] >> (4 * ((tick >> 0) & 1));
+    SetLedSelection(switched_leds[(tick & 0x3) << 2].select, mask);
+
     // direct LEDs
     for (uint8_t i = 16; i < 20; ++i) {
       digitalWriteFast(switched_leds[i].led, (ledstate[2] & (1 << (i-16))) ? HIGH : LOW);
