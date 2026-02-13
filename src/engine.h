@@ -120,9 +120,12 @@ struct Engine {
   }
 
   bool Advance() {
-    if (next_p != p_select)
+    const bool result = pattern[p_select].Advance();
+    // jump to next pattern at end of current one
+    if (0 == pattern[p_select].time_pos && next_p != p_select)
       p_select = next_p;
-    return pattern[p_select].Advance();
+    // but don't bother updating result to step 0 on new pattern, pfft
+    return result;
   }
 
   bool Clock() {
@@ -186,6 +189,9 @@ struct Engine {
   uint8_t get_patsel() const {
     return p_select;
   }
+  uint8_t get_next() const {
+    return next_p;
+  }
   const uint8_t get_time() const {
     return pattern[p_select].get_time();
   }
@@ -194,9 +200,9 @@ struct Engine {
   }
 
   // setters
-  void SetPattern(uint8_t p_) {
-    //p_select
-    next_p = p_ % 16;
+  void SetPattern(uint8_t p_, bool override = false) {
+    next_p = p_ & 0xf; // p_ % 16;
+    if (override) p_select = next_p;
   }
   void SetLength(uint8_t len) {
     pattern[p_select].SetLength(len);
