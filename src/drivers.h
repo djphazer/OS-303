@@ -3,7 +3,7 @@
 #pragma once
 #include "pins.h"
 
-static constexpr uint16_t SWITCH_DELAY = 10; // microseconds
+static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
 
 //
 // --- 303 CPU driver functions
@@ -66,6 +66,8 @@ namespace Leds {
   }
 
   void Send(const uint8_t tick) {
+    //const uint8_t cycle = (tick >> 2) & 0x3; // scanner for select pins, bits 0-3
+
     // switched LEDs
     // which row depends on tick
     uint8_t mask = ledstate[(tick >> 3) & 1] >> (4 * ((tick >> 2) & 1));
@@ -76,6 +78,11 @@ namespace Leds {
     for (uint8_t i = 16; i < 20; ++i) {
       digitalWriteFast(switched_leds[i].led, (ledstate[2] & (1 << (i-16))) ? HIGH : LOW);
     }
+
+    // blank slate for next time
+    ledstate[0] = 0;
+    ledstate[1] = 0;
+    ledstate[2] = 0;
   }
 
 } // namespace Leds

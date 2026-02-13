@@ -114,20 +114,17 @@ void loop() {
     // a unified array of all LEDs states - like a framebuffer/driver
 
     // chasing light for pattern step
-    if (clk_run && (engine.get_time_pos() >> 2) == cycle)
-      mask = led_bytes[engine.get_time_pos() & 0x7] >> 4;
-
-    if (gate_on) {
-      for (uint8_t i = 0; i < 4; ++i) {
-        // one row per tick, cycling through the 4 rows
-        const uint8_t idx = cycle*4 + i;
-
-        // show the pressed button for testing
-        mask |= inputs[switched_leds[idx].button].held() << i;
-      }
+    if (clk_run) {
+      Leds::Set(engine.get_time_pos() & 0x7, true);
+      //mask = led_bytes[engine.get_time_pos() & 0x7] >> 4;
     }
 
-    Leds::SetLedSelection(switched_leds[cycle*4].select, mask);
+    for (uint8_t i = 0; i < 16; ++i) {
+      // show all pressed buttons
+      if (inputs[switched_leds[i].button].held())
+        Leds::Set(i, true);
+    }
+
     // extra non-switched LEDs
     Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE);
     Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE);
