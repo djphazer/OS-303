@@ -137,12 +137,15 @@ void loop() {
     for (uint8_t i = 0; i < 8; ++i) {
       if (inputs[i].rising()) engine.SetPattern((engine.get_patsel() >> 3) * 8 + i);
     }
-    if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8);
-    if (inputs[SLIDE_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8 + 8);
+    if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8);    // A
+    if (inputs[SLIDE_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8 + 8); // B
 
     // flash LED for current pattern
     Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
     // TODO: solid LED for queued pattern
+
+    Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3)); // A
+    Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3));   // B
   }
 
   for (uint8_t i = 0; i < 16; ++i) {
