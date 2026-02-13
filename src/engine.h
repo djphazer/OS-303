@@ -41,6 +41,9 @@ struct Sequence {
   const bool is_tied() const {
     return time_pos < length && time[time_pos+1] == 2;
   }
+  const uint8_t get_time() const {
+    return time[time_pos];
+  }
 
   void SetTime(uint8_t t) {
     time[time_pos] = t;
@@ -94,6 +97,8 @@ struct Engine {
   // pattern storage
   Sequence pattern[16]; // 32 steps each
   uint8_t p_select = 0;
+  uint8_t next_p = 0; // queued pattern
+                      // TODO: start & end for chains
 
   SequencerMode mode_ = NORMAL_MODE;
   //uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
@@ -115,6 +120,8 @@ struct Engine {
   }
 
   bool Advance() {
+    if (next_p != p_select)
+      p_select = next_p;
     return pattern[p_select].Advance();
   }
 
@@ -179,11 +186,24 @@ struct Engine {
   uint8_t get_patsel() const {
     return p_select;
   }
-  void SetPattern(uint8_t p_) {
-    p_select = p_ % 16;
+  const uint8_t get_time() const {
+    return pattern[p_select].get_time();
+  }
+  const uint8_t get_length() const {
+    return pattern[p_select].length;
   }
 
   // setters
+  void SetPattern(uint8_t p_) {
+    //p_select
+    next_p = p_ % 16;
+  }
+  void SetLength(uint8_t len) {
+    pattern[p_select].SetLength(len);
+  }
+  bool BumpLength() {
+    return pattern[p_select].BumpLength();
+  }
   void SetMode(SequencerMode m) {
     mode_ = m;
   }
