@@ -20,6 +20,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 // -=-=- Globals -=-=-
 static uint8_t ticks = 0;
+static uint8_t clk_count = 0;
 
 static PinState inputs[INPUT_COUNT];
 
@@ -115,9 +116,21 @@ void loop() {
     //uint8_t mask = 0;
   //}
 
-  // chasing light for pattern step
   if (clk_run && write_mode) {
+    // chasing light for pattern step
     Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
+    Leds::Set(OutputIndex(CSHARP_KEY_LED + (engine.get_time_pos() >> 3)), true);
+  } else {
+    // Pattern Select
+    for (uint8_t i = 0; i < 8; ++i) {
+      if (inputs[i].rising()) engine.SetPattern((engine.get_patsel() >> 3) * 8 + i);
+    }
+    if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8);
+    if (inputs[SLIDE_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8 + 8);
+
+    // flash LED for current pattern
+    Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
+    // TODO: solid LED for queued pattern
   }
 
   for (uint8_t i = 0; i < 16; ++i) {
@@ -134,7 +147,8 @@ void loop() {
 
   Leds::Send(ticks); // hardware output, framebuffer reset
 
-  // process all inputs
+  // -=-=- process all inputs -=-=-
+  //
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2));
@@ -189,6 +203,8 @@ void loop() {
     clocked = inputs[CLOCK].rising();
   }
 
+  if (clocked) ++clk_count %= 24;
+
   if (clocked && clk_run) {
     send_note = engine.Clock(); // true is like a rising edge
 
@@ -206,11 +222,13 @@ void loop() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
     if (inputs[pitched_keys[i]].rising()) {
-      engine.NoteOn(i);
-      send_note = true;
+      if (write_mode) {
+        engine.NoteOn(i);
+        send_note = true;
 
-      if (write_mode && !track_mode && engine.get_mode() == PITCH_MODE) {
-        engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) | (inputs[SLIDE_KEY].held() << 7));
+        if (!track_mode && engine.get_mode() == PITCH_MODE) {
+          engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) | (inputs[SLIDE_KEY].held() << 7));
+        }
       }
     }
     if (inputs[pitched_keys[i]].held()) {
