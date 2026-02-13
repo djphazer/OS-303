@@ -95,7 +95,7 @@ struct Engine {
   Sequence pattern[16]; // 32 steps each
   uint8_t p_select = 0;
 
-  uint8_t mode_ = NORMAL_MODE;
+  SequencerMode mode_ = NORMAL_MODE;
   //uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
 
   uint8_t clk_count = 0;
@@ -158,7 +158,7 @@ struct Engine {
   }
 
   // getters
-  uint8_t get_mode() const { return mode_; }
+  SequencerMode get_mode() const { return mode_; }
 
   bool get_gate() const {
     return //delay_timer > 0 && 
@@ -180,7 +180,7 @@ struct Engine {
     return p_select;
   }
   void SetPattern(uint8_t p_) {
-    p_select = constrain(p_, 0, 15);
+    p_select = p_ % 16;
   }
 
   // setters

@@ -72,6 +72,7 @@ void setup() {
     switched_leds[1],
     switched_leds[0],
   };
+
   int x = 3;
   do {
     for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
@@ -116,7 +117,18 @@ void loop() {
     //uint8_t mask = 0;
   //}
 
-  if (clk_run && write_mode) {
+  if (edit_mode) {
+    if (engine.get_mode() == PITCH_MODE) {
+      const uint8_t pitch = engine.get_pitch();
+      Leds::Set(pitch_leds[pitch % 12], true);
+
+      Leds::Set(ACCENT_KEY_LED, engine.get_accent());
+      Leds::Set(SLIDE_KEY_LED, engine.get_slide());
+
+      if (pitch < 24) Leds::Set(DOWN_KEY_LED, true);
+      if (pitch >= 36) Leds::Set(UP_KEY_LED, true);
+    }
+  } else if (clk_run && write_mode) {
     // chasing light for pattern step
     Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
     Leds::Set(OutputIndex(CSHARP_KEY_LED + (engine.get_time_pos() >> 3)), true);

@@ -42,16 +42,6 @@ namespace Leds {
     //if (enable && pins.select) digitalWriteFast(pins.select, HIGH);
   }
 
-  void FlashLed(const OutputIndex led) {
-    static elapsedMillis timer = 0;
-    static bool onoff = false;
-    if (timer > 100) {
-      // blah blah
-      onoff = !onoff;
-      timer = 0;
-    }
-    Set(led, onoff);
-  }
   void SetLedSelection(uint8_t select_pin, uint8_t enable_mask) {
     const uint8_t switched_pins[4] = {
       PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
