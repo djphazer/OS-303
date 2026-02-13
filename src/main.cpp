@@ -77,7 +77,7 @@ void setup() {
   do {
     for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
       Leds::Set(ledseq[i], true);
-      delay(20);
+      delay(50);
       Leds::Set(ledseq[i], false);
       delay(10);
     }
