@@ -91,7 +91,7 @@ void setup() {
     switched_leds[0],
   };
 
-  int x = 3;
+  int x = 2;
   do {
     for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
       Leds::Set(ledseq[i], true);
@@ -100,6 +100,8 @@ void setup() {
       delay(10);
     }
   } while (--x > 0);
+
+  engine.Load();
 }
 
 void loop() {
@@ -113,6 +115,8 @@ void loop() {
   const bool fn_mod = inputs[FUNCTION_KEY].held();
   const bool clear_mod = inputs[CLEAR_KEY].held();
   const bool edit_mode = inputs[TAP_NEXT].held();
+
+  if (inputs[WRITE_MODE].falling()) engine.Save();
 
 #if DEBUG
   if (inputs[RUN].rising()) {

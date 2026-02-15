@@ -7,9 +7,8 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
-// TODO: set up EEPROM storage here
-
 static constexpr int MAX_STEPS = 32;
+static constexpr int NUM_PATTERNS = 16;
 
 enum SequencerMode {
   NORMAL_MODE,
@@ -18,12 +17,17 @@ enum SequencerMode {
 };
 
 struct Sequence {
+                                 // TODO: octave up/down flags?
   uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
-  uint8_t time[MAX_STEPS];  // 0=rest, 1=note, 2=tie, 3=triplets?
-                            // TODO: octave up/down flags?
+  uint8_t time_data[MAX_STEPS];  // 0=rest, 1=note, 2=tie, 3=triplets?
+  // time is stored as nibbles, so there's actually a lot of padding
+
+  const uint8_t time(uint8_t idx) const {
+    return (time_data[idx >> 1] >> (idx & 1)) & 0xf;
+  }
 
   uint8_t dummy = 0;
-  uint8_t length = 16;
+  uint8_t &length = time_data[MAX_STEPS - 1];
   uint8_t pitch_pos, time_pos;
 
   const uint8_t get_pitch() const {
@@ -39,14 +43,16 @@ struct Sequence {
     return get_slide(pitch_pos);
   }
   const bool is_tied() const {
-    return time_pos < length && time[time_pos+1] == 2;
+    return time_pos < length && time(time_pos+1) == 2;
   }
   const uint8_t get_time() const {
-    return time[time_pos];
+    return time(time_pos);
   }
 
   void SetTime(uint8_t t) {
-    time[time_pos] = t;
+    const uint8_t upper = time_pos & 1;
+    uint8_t &data = time_data[time_pos >> 1];
+    data = (~(0x0f << 4*upper) & data) | (t << 4*upper);
   }
   void SetPitch(uint8_t p) {
     // easier to just let the pitch include the accent/slide bits
@@ -68,7 +74,7 @@ struct Sequence {
   }
 
   void RegenTime() {
-    time[time_pos] = random();
+    time_data[time_pos] = random();
   }
   void RegenPitch() {
     pitch[pitch_pos] = random();
@@ -85,17 +91,34 @@ struct Sequence {
     time_pos %= length;
     if (time_pos == 0)
       pitch_pos = 0;
-    else if (time[time_pos] == 1)
+    else if (time(time_pos) == 1)
       ++pitch_pos;
-    return time[time_pos];
+    return time(time_pos);
   }
 };
+
+EEPROMClass storage;
+
+void WritePattern(Sequence &seq, int idx) {
+  uint8_t *src = seq.pitch;
+  idx *= MAX_STEPS * 2;
+  for (uint8_t i = 0; i < MAX_STEPS * 2; ++i) {
+    storage.write(idx + i, src[i]);
+  }
+}
+void ReadPattern(Sequence &seq, int idx) {
+  uint8_t *dst = seq.pitch;
+  idx *= MAX_STEPS * 2;
+  for (uint8_t i = 0; i < MAX_STEPS * 2; ++i) {
+    dst[i] = storage.read(idx + i);
+  }
+}
 
 struct Engine {
   elapsedMillis delay_timer = 0;
 
   // pattern storage
-  Sequence pattern[16]; // 32 steps each
+  Sequence pattern[NUM_PATTERNS]; // 32 steps each
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
                       // TODO: start & end for chains
@@ -110,8 +133,23 @@ struct Engine {
 
   bool slide_on = false; // flag to keep raised
   bool gate_on = false;
+  bool stale = false;
 
   // actions
+  void Load() {
+    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      ReadPattern(pattern[i], i);
+      if (0 == pattern[i].length) pattern[i].SetLength(16);
+    }
+  }
+  void Save() {
+    if (!stale) return;
+    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      WritePattern(pattern[i], i);
+    }
+    stale = false;
+  }
+
   void Tick(uint8_t &state) {
     if (gate_on != get_gate()) {
       // rising or falling
@@ -206,9 +244,11 @@ struct Engine {
   }
   void SetLength(uint8_t len) {
     pattern[p_select].SetLength(len);
+    stale = true;
   }
   bool BumpLength() {
     return pattern[p_select].BumpLength();
+    stale = true;
   }
   void SetMode(SequencerMode m) {
     mode_ = m;
@@ -218,18 +258,22 @@ struct Engine {
   }
   void SetPitch(uint8_t p, uint8_t flags) {
     pattern[p_select].SetPitch((24 + p + (octave_*12)) | flags);
+    stale = true;
   }
   void SetTime(uint8_t t) {
     pattern[p_select].SetTime(t);
+    stale = true;
   }
 
   void ToggleSlide() {
     if (mode_ == PITCH_MODE)
       pattern[p_select].ToggleSlide();
+    stale = true;
   }
   void ToggleAccent() {
     if (mode_ == PITCH_MODE)
       pattern[p_select].ToggleAccent();
+    stale = true;
   }
 
 };
