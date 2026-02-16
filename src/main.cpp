@@ -17,6 +17,8 @@
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
+EEPROMClass storage;
+PersistentSettings GlobalSettings;
 
 // -=-=- Globals -=-=-
 static uint8_t ticks = 0;

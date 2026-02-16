@@ -97,20 +97,45 @@ struct Sequence {
   }
 };
 
-EEPROMClass storage;
+// --- EEPROM data layout
+static constexpr int SETTINGS_SIZE = 128;
+static constexpr int PATTERN_SIZE = MAX_STEPS * 2;
+const char* const sig_pew = "PewPewPew!!!";
+
+extern EEPROMClass storage;
+
+struct PersistentSettings {
+  char signature[16];
+
+  void Load() {
+    storage.get(0, signature);
+  }
+  void Save() {
+    storage.put(0, signature);
+  }
+  bool Validate() const {
+    if (0 == strncmp(signature, sig_pew, 12))
+      return true;
+
+    strcpy((char*)signature, sig_pew);
+    return false;
+  }
+};
+
+extern PersistentSettings GlobalSettings;
 
 void WritePattern(Sequence &seq, int idx) {
   uint8_t *src = seq.pitch;
-  idx *= MAX_STEPS * 2;
-  for (uint8_t i = 0; i < MAX_STEPS * 2; ++i) {
-    storage.write(idx + i, src[i]);
+  idx *= PATTERN_SIZE;
+  for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
+    storage.write(SETTINGS_SIZE + idx + i, src[i]);
   }
 }
 void ReadPattern(Sequence &seq, int idx) {
   uint8_t *dst = seq.pitch;
-  idx *= MAX_STEPS * 2;
-  for (uint8_t i = 0; i < MAX_STEPS * 2; ++i) {
-    dst[i] = storage.read(idx + i);
+  idx *= PATTERN_SIZE;
+  for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
+    dst[i] = storage.read(SETTINGS_SIZE + idx + i);
   }
 }
 
@@ -138,10 +163,20 @@ struct Engine {
   // actions
   void Load() {
     Serial.println("Loading from EEPROM...");
-    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-      ReadPattern(pattern[i], i);
-      if (0 == pattern[i].length) pattern[i].SetLength(16);
+
+    // TODO: settings and calibration
+    GlobalSettings.Load();
+    if (GlobalSettings.Validate()) {
+      for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+        ReadPattern(pattern[i], i);
+        if (0 == pattern[i].length) pattern[i].SetLength(16);
+      }
+    } else {
+      // initialize memory with defaults or zeroes
+      GlobalSettings.Save();
+      Save();
     }
+
 #if DEBUG
     Serial.println("First pattern:");
     for (uint8_t i = 0; i < 64; ++i) {
@@ -150,13 +185,18 @@ struct Engine {
     Serial.print("\n");
 #endif
   }
-  void Save() {
+  void Save(int pidx = -1) {
     if (!stale) return;
     Serial.print("Saving to EEPROM... ");
-    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-      Serial.print(".");
-      WritePattern(pattern[i], i);
-    }
+    // TODO: only update patterns that have changed
+    if (pidx < 0) {
+      for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+        Serial.print(".");
+        WritePattern(pattern[i], i);
+      }
+    } else
+      WritePattern(pattern[pidx], pidx);
+
     stale = false;
     Serial.println("DONE!");
   }
