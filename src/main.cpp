@@ -1,13 +1,13 @@
 // Copyright (c) 2026, Nicholas J. Michalek
 //
 
+#define DEBUG 1
+
 #include <Arduino.h>
 #include "pins.h"
 #include "drivers.h"
 #include "engine.h"
 #include "MIDI.h"
-
-#define DEBUG 0
 
 //
 // *** Utilities ***

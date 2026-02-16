@@ -137,17 +137,28 @@ struct Engine {
 
   // actions
   void Load() {
+    Serial.println("Loading from EEPROM...");
     for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
       ReadPattern(pattern[i], i);
       if (0 == pattern[i].length) pattern[i].SetLength(16);
     }
+#if DEBUG
+    Serial.println("First pattern:");
+    for (uint8_t i = 0; i < 64; ++i) {
+      Serial.printf("%2x ", pattern[0].pitch[i]);
+    }
+    Serial.print("\n");
+#endif
   }
   void Save() {
     if (!stale) return;
+    Serial.print("Saving to EEPROM... ");
     for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      Serial.print(".");
       WritePattern(pattern[i], i);
     }
     stale = false;
+    Serial.println("DONE!");
   }
 
   void Tick(uint8_t &state) {
