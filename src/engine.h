@@ -89,8 +89,7 @@ struct Sequence {
 
   // returns false for rests
   bool Advance() {
-    ++time_pos;
-    time_pos %= length;
+    ++time_pos %= length;
     if (time_pos == 0)
       pitch_pos = 0;
     else if (time(time_pos) == 1)

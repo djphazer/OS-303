@@ -36,20 +36,31 @@ static Engine engine;
 
 // crucial bits tying together the inputs + engine
 
-void input_pitch() {
+bool input_pitch() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (inputs[pitched_keys[i]].rising()) {
       engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) | (inputs[SLIDE_KEY].held() << 7));
+      return true;
     }
   }
+  if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
+  if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
+  return false;
 }
-void input_time() {
-  if (inputs[DOWN_KEY].rising())
+bool input_time() {
+  if (inputs[DOWN_KEY].rising()) {
     engine.SetTime(1); // note
-  if (inputs[UP_KEY].rising())
+    return true;
+  }
+  if (inputs[UP_KEY].rising()) {
     engine.SetTime(2); // tie
-  if (inputs[ACCENT_KEY].rising())
+    return true;
+  }
+  if (inputs[ACCENT_KEY].rising()) {
     engine.SetTime(0); // rest
+    return true;
+  }
+  return false;
 }
 
 
@@ -144,6 +155,14 @@ void loop() {
   if (edit_mode) {
     switch (engine.get_mode()) {
       case PITCH_MODE: {
+        if (write_mode) {
+          if (inputs[ACCENT_KEY].rising())
+            engine.ToggleAccent();
+          if (inputs[SLIDE_KEY].rising())
+            engine.ToggleSlide();
+          input_pitch();
+        }
+
         const uint8_t pitch = engine.get_pitch();
         Leds::Set(pitch_leds[pitch % 12], true);
 
@@ -155,32 +174,45 @@ void loop() {
         break;
       }
       case TIME_MODE:
+        if (write_mode) {
+          input_time();
+        }
+
         Leds::Set(DOWN_KEY_LED, engine.get_time() == 1);
         Leds::Set(UP_KEY_LED, engine.get_time() == 2);
         Leds::Set(ACCENT_KEY_LED, engine.get_time() == 0);
       case NORMAL_MODE:
         break;
     }
-  } else if (clk_run && write_mode) {
-    // chasing light for pattern step
-    Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
-    Leds::Set(OutputIndex(CSHARP_KEY_LED + (engine.get_time_pos() >> 3)), true);
-  } else {
-    // Pattern Select
-    for (uint8_t i = 0; i < 8; ++i) {
-      if (inputs[i].rising()) engine.SetPattern((engine.get_patsel() >> 3) * 8 + i, !clk_run);
-    }
-    if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8);    // A
-    if (inputs[SLIDE_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8 + 8); // B
-
+  } else { // not holding a modifier
     // flash LED for current pattern
     Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
-    // TODO: solid LED for queued pattern
+    // solid LED for queued pattern
     if (engine.get_patsel() != engine.get_next())
       Leds::Set(OutputIndex(engine.get_next() & 0x7), true);
-
     Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3)); // A
     Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3));   // B
+
+    switch (engine.get_mode()) {
+      case PITCH_MODE:
+      case TIME_MODE:
+        if (!write_mode)
+          engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
+        break;
+      case NORMAL_MODE:
+        if (clk_run && write_mode) {
+          // chasing light for pattern step
+          Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
+          Leds::Set(OutputIndex(CSHARP_KEY_LED + (engine.get_time_pos() >> 3)), true);
+        } 
+        // Inputs for Pattern Select
+        for (uint8_t i = 0; i < 8; ++i) {
+          if (inputs[i].rising()) engine.SetPattern((engine.get_patsel() >> 3) * 8 + i, !clk_run);
+        }
+        if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8, !clk_run);    // A
+        if (inputs[SLIDE_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8 + 8, !clk_run); // B
+        break;
+    }
   }
 
   for (uint8_t i = 0; i < 16; ++i) {
@@ -211,12 +243,11 @@ void loop() {
 
   if (fn_mod && write_mode) {
     if (step_counter) {
-      Leds::Set(OutputIndex(engine.get_length() & 0x7), true);
+      Leds::Set(OutputIndex((engine.get_length() - 1) & 0x7), true);
       Leds::Set(CSHARP_KEY_LED, true);
-      Leds::Set(DSHARP_KEY_LED, engine.get_length() >> 3);
+      Leds::Set(DSHARP_KEY_LED, (engine.get_length() - 1) >> 3);
     }
     if (inputs[DOWN_KEY].rising()) {
-      // TODO: .....
       if (step_counter)
         step_counter = engine.BumpLength();
       else {
@@ -261,22 +292,18 @@ void loop() {
   if (clocked) ++clk_count %= 24;
 
   if (clocked && clk_run) {
-    send_note = engine.Clock(); // true is like a rising edge
+    send_note = true;
+    engine.Clock();
 
-    if (send_note) {
-      // hold CLEAR + BACK in write mode to generate random stuff
-      if (!track_mode && write_mode && clear_mod && inputs[BACK_KEY].held()) {
-        // TODO: * GENERATE! *
-        engine.Generate();
-      }
+    // hold CLEAR + BACK in write mode to generate random stuff
+    if (!track_mode && write_mode && clear_mod && inputs[BACK_KEY].held()) {
+      // TODO: * GENERATE! *
+      engine.Generate();
     }
   }
 
   // check all pitch keys...
   uint8_t notes_on = 0;
-  if (write_mode && !track_mode && engine.get_mode() == PITCH_MODE) {
-    input_pitch(); // record pitch
-  }
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // any keypress sends a note
     if (inputs[pitched_keys[i]].rising()) {
@@ -302,31 +329,25 @@ void loop() {
   }
   if (edit_mode) {
     gate_off = false;
-    // TODO: check a buncha button actions here
-    if (write_mode) {
-      // etc.
-      switch (engine.get_mode()) {
-        case PITCH_MODE:
-          if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
-          if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
-          input_pitch();
-          break;
-        case TIME_MODE:
-          input_time();
-
-          Leds::Set(DOWN_KEY_LED, engine.get_time());
-        case NORMAL_MODE:
-          break;
-      }
-    }
   }
   if (inputs[TAP_NEXT].falling()) {
     gate_off = true;
   }
 
-  // pattern write mode
-  if (write_mode && !track_mode && engine.get_mode() == TIME_MODE) {
-    input_time();
+  // regular pattern write mode
+  if (!edit_mode && write_mode && !track_mode) {
+    if (engine.get_mode() == TIME_MODE) {
+      if (input_time()) { // record time
+        engine.Advance();
+        if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
+      }
+    }
+    if (engine.get_mode() == PITCH_MODE) {
+      if (input_pitch()) { // record pitch
+        engine.Advance();
+        if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
+      }
+    }
   }
 
   if (clk_run) {
