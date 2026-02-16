@@ -17,17 +17,19 @@ enum SequencerMode {
 };
 
 struct Sequence {
+  // data
                                  // TODO: octave up/down flags?
   uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
-  uint8_t time_data[MAX_STEPS];  // 0=rest, 1=note, 2=tie, 3=triplets?
+  uint8_t time_data[MAX_STEPS/2];  // 0=rest, 1=note, 2=tie, 3=triplets?
   // time is stored as nibbles, so there's actually a lot of padding
+  uint8_t reserved[MAX_STEPS/2 - 1];
+  uint8_t length = 16;
 
   const uint8_t time(uint8_t idx) const {
     return (time_data[idx >> 1] >> (idx & 1)) & 0xf;
   }
 
-  uint8_t dummy = 0;
-  uint8_t &length = time_data[MAX_STEPS - 1];
+  // state
   uint8_t pitch_pos, time_pos;
 
   const uint8_t get_pitch() const {
@@ -128,7 +130,7 @@ void WritePattern(Sequence &seq, int idx) {
   uint8_t *src = seq.pitch;
   idx *= PATTERN_SIZE;
   for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
-    storage.write(SETTINGS_SIZE + idx + i, src[i]);
+    storage.update(SETTINGS_SIZE + idx + i, src[i]);
   }
 }
 void ReadPattern(Sequence &seq, int idx) {
@@ -174,7 +176,7 @@ struct Engine {
     } else {
       // initialize memory with defaults or zeroes
       GlobalSettings.Save();
-      Save();
+      //Save();
     }
 
 #if DEBUG
@@ -190,12 +192,16 @@ struct Engine {
     Serial.print("Saving to EEPROM... ");
     // TODO: only update patterns that have changed
     if (pidx < 0) {
+      pidx = p_select;
+      /*
       for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
         Serial.print(".");
         WritePattern(pattern[i], i);
       }
-    } else
-      WritePattern(pattern[pidx], pidx);
+      */
+    }
+
+    WritePattern(pattern[pidx], pidx);
 
     stale = false;
     Serial.println("DONE!");
