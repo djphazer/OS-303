@@ -289,7 +289,9 @@ void loop() {
     clocked = inputs[CLOCK].rising();
   }
 
-  if (clocked) ++clk_count %= 24;
+  if (clocked) {
+    ++clk_count %= 24;
+  }
 
   if (clocked && clk_run) {
     send_note = true;
@@ -350,21 +352,17 @@ void loop() {
     }
   }
 
+  send_note = send_note || edit_mode;
+
   if (clk_run) {
     // send sequence step
     if (send_note && engine.get_gate()) {
       DAC::SetPitch(engine.get_pitch());
       DAC::SetSlide(engine.get_slide());
       DAC::SetAccent(engine.get_accent());
-      DAC::SetGate(true);
-      gate_on = true;
       send_note = false;
     }
-    if (gate_on && !engine.get_gate()) {
-      DAC::SetGate(false);
-      gate_on = false;
-      gate_off = false;
-    }
+    DAC::SetGate(engine.get_gate());
   } else {
     // not run mode - send notes from keys
     if (send_note) {
@@ -383,6 +381,8 @@ void loop() {
     }
   }
 
-  DAC::Send();
   ++ticks;
+
+  // send DAC every 4 ticks...
+  if (0 == (ticks & 0x3)) DAC::Send();
 }
