@@ -220,6 +220,7 @@ struct Engine {
     gate_on = get_gate();
   }
 
+  // returns false for rests
   bool Advance() {
     const bool result = pattern[p_select].Advance();
     // jump to next pattern at end of current one

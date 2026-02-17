@@ -338,12 +338,14 @@ void loop() {
 
   if (inputs[TAP_NEXT].rising()) {
     send_note = engine.Advance();
+    DAC::SetGate(send_note);
   }
   if (edit_mode) {
     gate_off = false;
   }
   if (inputs[TAP_NEXT].falling()) {
     gate_off = true;
+    DAC::SetGate(false);
   }
 
   // regular pattern write mode
@@ -393,6 +395,6 @@ void loop() {
 
   ++ticks;
 
-  // send DAC every 4 ticks...
-  if (0 == (ticks & 0x3)) DAC::Send();
+  // send DAC every other tick...
+  if (0 == (ticks & 0x1)) DAC::Send();
 }
