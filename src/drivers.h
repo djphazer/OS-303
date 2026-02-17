@@ -8,25 +8,58 @@ static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
 //
 // --- 303 CPU driver functions
 //
-void SendCV(bool slide = false) {
-  // Clock for the D/A converter chip
-  if (slide) digitalWriteFast(PI1_PIN, LOW);
-  digitalWriteFast(PI1_PIN, HIGH);
-  if (!slide) digitalWriteFast(PI1_PIN, LOW);
-}
 
-void SetGate(bool on) {
-  digitalWriteFast(PI2_PIN, on ? HIGH : LOW);
-  PORTE ^= 1;
-  PORTE ^= 1;
-}
-void SetAccent(bool on) {
-  digitalWriteFast(PE0_PIN, on ? HIGH : LOW);
-}
+namespace DAC {
+  static uint8_t pitch_;
+  static bool slide_ = false;
+  static bool accent_ = false;
+  static bool gate_ = false;
+
+  void Send() {
+    // send to gate pin
+    //digitalWriteFast(PI2_PIN, gate_ ? HIGH : LOW);
+    // send to accent pin
+    //digitalWriteFast(PE0_PIN, accent_ ? HIGH : LOW);
+
+    // set gate and accent pins - this also turns the latch bit off
+    PORTE = (gate_ << 1) | (accent_ << 6);
+
+    // set 6-bit pitch for CV Out
+    PORTC = pitch_ & 0x3f;
+
+    PORTE |= 0x1; // latch and slide
+    if (!slide_) // turn slide bit back off
+      PORTE ^= 0x1;
+
+    // toggle the latch/slide pin
+    //PORTE ^= 1;
+    //PORTE ^= 1;
+    // ...but this other way is... smarter? dumber? better.
+    // Clock for the D/A converter chip
+    /*
+    if (slide) digitalWriteFast(PI1_PIN, LOW);
+    digitalWriteFast(PI1_PIN, HIGH);
+    if (!slide) digitalWriteFast(PI1_PIN, LOW);
+    */
+  }
+
+  void SetPitch(uint8_t p) {
+    pitch_ = p;
+  }
+  void SetGate(bool on) {
+    gate_ = on;
+  }
+  void SetAccent(bool on) {
+    accent_ = on;
+  }
+  void SetSlide(bool on) {
+    slide_ = on;
+  }
+} // namespace DAC
 
 namespace Leds {
   // like a framebuffer, each bit corresponds to an entry in the switched_leds table
-  uint8_t ledstate[3] = {0};
+  static uint8_t ledstate[3];
 
   void Set(OutputIndex ledidx, bool enable = true) {
     const uint8_t bit_idx = ledidx & 0x7;

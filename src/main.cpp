@@ -353,51 +353,36 @@ void loop() {
   if (clk_run) {
     // send sequence step
     if (send_note && engine.get_gate()) {
-      bool slide_on = engine.get_slide();
-
-      // DAC for CV Out
-      PORTC = engine.get_pitch();
-
-      // turn  bits off first
-      PORTE = 0x00;
-      PORTE = 0b11 | engine.get_accent();
-      if (!slide_on) // turn slide bit back off
-        PORTE ^= 1;
-
+      DAC::SetPitch(engine.get_pitch());
+      DAC::SetSlide(engine.get_slide());
+      DAC::SetAccent(engine.get_accent());
+      DAC::SetGate(true);
       gate_on = true;
       send_note = false;
     }
     if (gate_on && !engine.get_gate()) {
-      // turn just the gate bit off
-      //PORTE &= ~0b10;
-      SetGate(false);
+      DAC::SetGate(false);
       gate_on = false;
       gate_off = false;
     }
   } else {
     // not run mode - send notes from keys
     if (send_note) {
-
-      // DAC for CV Out
-      bool slide_on = inputs[SLIDE_KEY].held();
-
-      PORTC = engine.get_pitch();
-
-      PORTE = 0x00; // turn gate/slide/accent bits off first
-      PORTE = 0b11 | (inputs[ACCENT_KEY].held() << 6);
-      if (!slide_on) // turn slide bit back off
-        PORTE ^= 1;
-
+      DAC::SetPitch(engine.get_pitch());
+      DAC::SetSlide(inputs[SLIDE_KEY].held());
+      DAC::SetAccent(inputs[ACCENT_KEY].held());
+      DAC::SetGate(true);
       gate_on = true;
       send_note = false;
     }
 
     if (gate_on && gate_off) {
-      SetGate(false);
+      DAC::SetGate(false);
       gate_on = false;
       gate_off = false;
     }
   }
 
+  DAC::Send();
   ++ticks;
 }
