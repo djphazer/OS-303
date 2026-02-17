@@ -129,6 +129,10 @@ void loop() {
   const bool clear_mod = inputs[CLEAR_KEY].held();
   const bool edit_mode = inputs[TAP_NEXT].held();
 
+  // todo: transpose, performance stuff, config menus
+  const bool pitch_mod = inputs[PITCH_KEY].held();
+  const bool time_mod = inputs[TIME_KEY].held();
+
   if (inputs[WRITE_MODE].falling()) engine.Save();
 
 #if DEBUG
@@ -185,14 +189,6 @@ void loop() {
         break;
     }
   } else { // not holding a modifier
-    // flash LED for current pattern
-    Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
-    // solid LED for queued pattern
-    if (engine.get_patsel() != engine.get_next())
-      Leds::Set(OutputIndex(engine.get_next() & 0x7), true);
-    Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3)); // A
-    Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3));   // B
-
     switch (engine.get_mode()) {
       case PITCH_MODE:
       case TIME_MODE:
@@ -200,6 +196,14 @@ void loop() {
           engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
         break;
       case NORMAL_MODE:
+        // flash LED for current pattern
+        Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
+        // solid LED for queued pattern
+        if (engine.get_patsel() != engine.get_next())
+          Leds::Set(OutputIndex(engine.get_next() & 0x7), true);
+        Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3)); // A
+        Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3));   // B
+
         if (clk_run && write_mode) {
           // chasing light for pattern step
           Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
@@ -207,7 +211,12 @@ void loop() {
         } 
         // Inputs for Pattern Select
         for (uint8_t i = 0; i < 8; ++i) {
-          if (inputs[i].rising()) engine.SetPattern((engine.get_patsel() >> 3) * 8 + i, !clk_run);
+          if (inputs[i].rising()) {
+            if (clear_mod)
+              engine.ClearPattern(i);
+            else
+              engine.SetPattern((engine.get_patsel() >> 3) * 8 + i, !clk_run);
+          }
         }
         if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8, !clk_run);    // A
         if (inputs[SLIDE_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8 + 8, !clk_run); // B
@@ -267,6 +276,7 @@ void loop() {
   // catch falling edge of RUN
   if (inputs[RUN].falling()) {
     gate_off = true;
+    engine.Reset();
   }
 
   // process all MIDI here

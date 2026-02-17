@@ -86,6 +86,13 @@ struct Sequence {
     pitch_pos = 0;
     time_pos = 0;
   }
+  void Clear() {
+    for (uint8_t i = 0; i < MAX_STEPS; ++i) {
+      pitch[i] = 0;
+      time_data[i>>1] = 0;
+    }
+    length = 8;
+  }
 
   // returns false for rests
   bool Advance() {
@@ -170,7 +177,7 @@ struct Engine {
     if (GlobalSettings.Validate()) {
       for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
         ReadPattern(pattern[i], i);
-        if (0 == pattern[i].length) pattern[i].SetLength(16);
+        if (0 == pattern[i].length) pattern[i].SetLength(8);
       }
     } else {
       // initialize memory with defaults or zeroes
@@ -249,6 +256,10 @@ struct Engine {
       pattern[p_select].RegenPitch();
     else if (mode_ == TIME_MODE)
       pattern[p_select].RegenTime();
+  }
+
+  void ClearPattern(uint8_t idx) {
+    pattern[idx].Clear();
   }
 
   // handle input - semitone from 0-11
