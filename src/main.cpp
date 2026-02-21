@@ -9,12 +9,6 @@
 #include "engine.h"
 #include "MIDI.h"
 
-//
-// *** Utilities ***
-//
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
-#define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
-
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 EEPROMClass storage;
@@ -39,12 +33,17 @@ static Engine engine;
 bool input_pitch() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (inputs[pitched_keys[i]].rising()) {
-      engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) | (inputs[SLIDE_KEY].held() << 7));
+      engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) |
+                         (inputs[SLIDE_KEY].held() << 7) |
+                         (inputs[DOWN_KEY].held() << 4) |
+                         (inputs[UP_KEY].held() << 5));
       return true;
     }
   }
   if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
   if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
+  if (inputs[UP_KEY].rising()) engine.NudgeOctave(1);
+  if (inputs[DOWN_KEY].rising()) engine.NudgeOctave(-1);
   return false;
 }
 bool input_time() {
@@ -160,10 +159,6 @@ void loop() {
     switch (engine.get_mode()) {
       case PITCH_MODE: {
         if (write_mode) {
-          if (inputs[ACCENT_KEY].rising())
-            engine.ToggleAccent();
-          if (inputs[SLIDE_KEY].rising())
-            engine.ToggleSlide();
           input_pitch();
         }
 
@@ -264,9 +259,6 @@ void loop() {
         step_counter = true;
       }
     }
-  } else {
-    if (inputs[UP_KEY].rising()) engine.NudgeOctave(1);
-    if (inputs[DOWN_KEY].rising()) engine.NudgeOctave(-1);
   }
 
   if (inputs[FUNCTION_KEY].falling()) step_counter = false;
@@ -304,7 +296,6 @@ void loop() {
   }
 
   if (clocked && clk_run) {
-    send_note = true;
     engine.Clock();
 
     // hold CLEAR + BACK in write mode to generate random stuff
@@ -368,29 +359,24 @@ void loop() {
 
   if (clk_run) {
     // send sequence step
-    if (send_note && engine.get_gate()) {
-      DAC::SetPitch(engine.get_pitch());
-      DAC::SetSlide(engine.get_slide());
-      DAC::SetAccent(engine.get_accent());
-      send_note = false;
-    }
+    DAC::SetPitch(engine.get_pitch(true));
+    DAC::SetSlide(engine.get_slide());
+    DAC::SetAccent(engine.get_accent());
     DAC::SetGate(engine.get_gate());
   } else {
     // not run mode - send notes from keys
+    DAC::SetPitch(engine.get_pitch(false));
+    DAC::SetSlide(inputs[SLIDE_KEY].held());
+    DAC::SetAccent(inputs[ACCENT_KEY].held());
     if (send_note) {
-      DAC::SetPitch(engine.get_pitch());
-      DAC::SetSlide(inputs[SLIDE_KEY].held());
-      DAC::SetAccent(inputs[ACCENT_KEY].held());
-      DAC::SetGate(true);
       gate_on = true;
       send_note = false;
     }
-
     if (gate_on && gate_off) {
-      DAC::SetGate(false);
       gate_on = false;
       gate_off = false;
     }
+    DAC::SetGate(gate_on);
   }
 
   ++ticks;

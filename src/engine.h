@@ -7,6 +7,12 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
+//
+// *** Utilities ***
+//
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
+#define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
+
 static constexpr int MAX_STEPS = 32;
 static constexpr int NUM_PATTERNS = 16;
 
@@ -14,6 +20,13 @@ enum SequencerMode {
   NORMAL_MODE,
   PITCH_MODE,
   TIME_MODE,
+};
+
+enum OctaveState {
+  OCTAVE_ZERO,
+  OCTAVE_DOWN,
+  OCTAVE_UP,
+  OCTAVE_DOUBLE_UP,
 };
 
 struct Sequence {
@@ -32,8 +45,27 @@ struct Sequence {
   // state
   uint8_t pitch_pos, time_pos;
 
+  const uint8_t get_octave() const {
+    return pitch[pitch_pos] >> 4 & 0x3;
+  }
+  // 6-bit pitch
   const uint8_t get_pitch() const {
-    return pitch[pitch_pos] & 0x3f;
+    int p = (pitch[pitch_pos] & 0x0f) + 24;
+    switch (get_octave()) {
+      case OCTAVE_DOWN:
+        p -= 12;
+        break;
+      case OCTAVE_UP:
+        p += 12;
+        break;
+      case OCTAVE_DOUBLE_UP:
+        p += 24;
+        break;
+      default:
+        break;
+    }
+    if (p < 0) p = 0;
+    return p;
   }
   const uint8_t get_accent() const {
     return pitch[pitch_pos] & (1<<6);
@@ -56,18 +88,26 @@ struct Sequence {
     uint8_t &data = time_data[time_pos >> 1];
     data = (~(0x0f << 4*upper) & data) | (t << 4*upper);
   }
+  void SetPitch(uint8_t p, uint8_t flags) {
+    pitch[pitch_pos] = (p & 0x0f) | (flags & 0xf0);
+  }
   void SetPitch(uint8_t p) {
-    // easier to just let the pitch include the accent/slide bits
-    pitch[pitch_pos] = p;
-    // (p & 0x3f) | (pitch[pitch_pos] & 0xc0);
+    // 4-bit pitch value
+    pitch[pitch_pos] = (p & 0x0f) | (pitch[pitch_pos] & 0xf0);
   }
   void SetLength(uint8_t len) { length = constrain(len, 1, MAX_STEPS); }
-
-  void ToggleSlide() {
-    pitch[pitch_pos] ^= (1<<7);
+  void SetOctave(int oct) {
+    CONSTRAIN(oct, 0, 3);
+    pitch[pitch_pos] = (uint8_t(oct) & 0x3 << 4) | (pitch[pitch_pos] & 0xcf);
   }
-  void ToggleAccent() {
-    pitch[pitch_pos] ^= (1<<6);
+
+  void ToggleSlide() { pitch[pitch_pos] ^= (1 << 7); }
+  void ToggleAccent() { pitch[pitch_pos] ^= (1 << 6); }
+  void SetSlide(bool on) {
+    pitch[pitch_pos] = (pitch[pitch_pos] & ~(1 << 7)) | (on << 7);
+  }
+  void SetAccent(bool on) {
+    pitch[pitch_pos] = (pitch[pitch_pos] & ~(1 << 6)) | (on << 6);
   }
 
   bool BumpLength() {
@@ -148,7 +188,7 @@ void ReadPattern(Sequence &seq, int idx) {
 }
 
 struct Engine {
-  elapsedMillis delay_timer = 0;
+  //elapsedMillis delay_timer = 0;
 
   // pattern storage
   Sequence pattern[NUM_PATTERNS]; // 32 steps each
@@ -162,7 +202,6 @@ struct Engine {
   uint8_t clk_count = 0;
 
   uint8_t cv_out_ = 0; // semitone
-  int8_t octave_ = 0;
 
   bool slide_on = false; // flag to keep raised
   bool gate_on = false;
@@ -230,13 +269,14 @@ struct Engine {
     return result;
   }
 
+  // returns true for new pitch step
   bool Clock() {
     bool send_note = false;
     ++clk_count %= 6;
 
     if (clk_count == 1) { // sixteenth note advance
       send_note = Advance();
-      delay_timer = 0;
+      //delay_timer = 0;
     }
 
     // hmmmm
@@ -265,25 +305,30 @@ struct Engine {
 
   // handle input - semitone from 0-11
   void NoteOn(int pitch) {
-    cv_out_ = pitch + octave_ * 12 + 36;
+    cv_out_ = pitch;
     gate_on = true;
   }
   void NoteOff(uint8_t pitch) {
-    if (cv_out_ == pitch + octave_ * 12 + 36)
+    if (cv_out_ == pitch)
       gate_on = false;
   }
 
   // getters
   SequencerMode get_mode() const { return mode_; }
 
+  Sequence &get_sequence() { return pattern[p_select]; }
+  const Sequence &get_sequence() const { return pattern[p_select]; }
+
   bool get_gate() const {
     return //delay_timer > 0 && 
       (clk_count < 4 || slide_on);
   }
   bool get_accent() const {
-    return pattern[p_select].get_accent() && clk_count < 3;
+    return get_sequence().get_accent() && clk_count < 3;
   }
-  uint8_t get_pitch() const {
+  uint8_t get_pitch(bool run = false) const {
+    if (!run)
+      return cv_out_;
     return pattern[p_select].get_pitch();
   }
   bool get_slide() const {
@@ -322,10 +367,10 @@ struct Engine {
     mode_ = m;
   }
   void NudgeOctave(int dir) {
-    octave_ = constrain(octave_ + dir, -2, 2);
+    get_sequence().SetOctave(get_sequence().get_octave() + dir);
   }
   void SetPitch(uint8_t p, uint8_t flags) {
-    pattern[p_select].SetPitch((24 + p + (octave_*12)) | flags);
+    get_sequence().SetPitch(p, flags);
     stale = true;
   }
   void SetTime(uint8_t t) {
