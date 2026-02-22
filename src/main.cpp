@@ -21,8 +21,6 @@ static uint8_t clk_count = 0;
 static PinState inputs[INPUT_COUNT];
 
 static uint8_t tracknum = 0;
-static bool gate_on = false;
-static bool send_note = true;
 static bool step_counter = false;
 
 // this is where the magic happens
@@ -229,7 +227,8 @@ void loop() {
   Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE);
   Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE);
   Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE);
-  Leds::Set(ASHARP_KEY_LED, inputs[ASHARP_KEY].held() || (gate_on && (engine.get_pitch() % 12 == 10)));
+  // hmmm
+  //Leds::Set(ASHARP_KEY_LED, inputs[ASHARP_KEY].held() || (engine.get_pitch() % 12 == 10));
 
   Leds::Send(ticks); // hardware output, framebuffer reset
 
@@ -263,11 +262,9 @@ void loop() {
 
   if (inputs[FUNCTION_KEY].falling()) step_counter = false;
 
-  bool gate_off = false;
-
   // catch falling edge of RUN
   if (inputs[RUN].falling()) {
-    gate_off = true;
+    DAC::SetGate(false);
     engine.Reset();
   }
 
@@ -312,7 +309,6 @@ void loop() {
     if (inputs[pitched_keys[i]].rising()) {
       if (write_mode) {
         engine.NoteOn(i);
-        send_note = true;
       }
     }
     if (inputs[pitched_keys[i]].held()) {
@@ -321,21 +317,17 @@ void loop() {
 
     if (inputs[pitched_keys[i]].falling()) {
       engine.NoteOff(i);
-      gate_off = true;
       --notes_on;
     }
   }
-  gate_off = gate_off && (0 == notes_on);
+  if (0 == notes_on && !clk_run) {
+    DAC::SetGate(false);
+  }
 
   if (inputs[TAP_NEXT].rising()) {
-    send_note = engine.Advance();
-    DAC::SetGate(send_note);
-  }
-  if (edit_mode) {
-    gate_off = false;
+    DAC::SetGate(engine.Advance());
   }
   if (inputs[TAP_NEXT].falling()) {
-    gate_off = true;
     DAC::SetGate(false);
   }
 
@@ -355,8 +347,6 @@ void loop() {
     }
   }
 
-  send_note = send_note || edit_mode;
-
   if (clk_run) {
     // send sequence step
     DAC::SetPitch(engine.get_pitch(true));
@@ -368,15 +358,6 @@ void loop() {
     DAC::SetPitch(engine.get_pitch(false));
     DAC::SetSlide(inputs[SLIDE_KEY].held());
     DAC::SetAccent(inputs[ACCENT_KEY].held());
-    if (send_note) {
-      gate_on = true;
-      send_note = false;
-    }
-    if (gate_on && gate_off) {
-      gate_on = false;
-      gate_off = false;
-    }
-    DAC::SetGate(gate_on);
   }
 
   ++ticks;
