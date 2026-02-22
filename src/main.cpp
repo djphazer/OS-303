@@ -147,12 +147,6 @@ void loop() {
   }
 #endif
 
-  // --- update LEDs on every 4 ticks
-  //if ((ticks & 0x03) == 1) {
-    //const uint8_t cycle = (ticks >> 2) & 0x3; // scanner for select pins, bits 0-3
-    //uint8_t mask = 0;
-  //}
-
   if (edit_mode) {
     switch (engine.get_mode()) {
       case PITCH_MODE: {
@@ -165,9 +159,8 @@ void loop() {
 
         Leds::Set(ACCENT_KEY_LED, engine.get_accent());
         Leds::Set(SLIDE_KEY_LED, engine.get_slide());
-
-        if (pitch < 24) Leds::Set(DOWN_KEY_LED, true);
-        if (pitch >= 36) Leds::Set(UP_KEY_LED, true);
+        Leds::Set(DOWN_KEY_LED, engine.get_sequence().get_octave() & 0x1);
+        Leds::Set(UP_KEY_LED, engine.get_sequence().get_octave() & 0x2);
         break;
       }
       case TIME_MODE:
@@ -205,10 +198,11 @@ void loop() {
         // Inputs for Pattern Select
         for (uint8_t i = 0; i < 8; ++i) {
           if (inputs[i].rising()) {
+            const uint8_t patsel = (engine.get_patsel() >> 3) * 8 + i;
             if (clear_mod)
-              engine.ClearPattern(i);
+              engine.ClearPattern(patsel);
             else
-              engine.SetPattern((engine.get_patsel() >> 3) * 8 + i, !clk_run);
+              engine.SetPattern(patsel, !clk_run);
           }
         }
         if (inputs[ACCENT_KEY].rising()) engine.SetPattern(engine.get_patsel() % 8, !clk_run);    // A
@@ -302,30 +296,34 @@ void loop() {
     }
   }
 
-  // check all pitch keys...
-  uint8_t notes_on = 0;
-  for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
-    // any keypress sends a note
-    if (inputs[pitched_keys[i]].rising()) {
-      if (write_mode) {
-        engine.NoteOn(i);
+  if (engine.get_mode() == PITCH_MODE) {
+    // check all pitch keys...
+    uint8_t notes_on = 0;
+    for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
+      // any keypress sends a note - always?
+      if (inputs[pitched_keys[i]].rising()) {
+        if (write_mode) {
+          engine.NoteOn(i);
+          DAC::SetGate(true);
+        }
+      }
+      if (inputs[pitched_keys[i]].held()) {
+        ++notes_on;
+      }
+
+      if (inputs[pitched_keys[i]].falling()) {
+        engine.NoteOff(i);
+        --notes_on;
       }
     }
-    if (inputs[pitched_keys[i]].held()) {
-      ++notes_on;
+    if (0 == notes_on && !clk_run) {
+      DAC::SetGate(false);
     }
-
-    if (inputs[pitched_keys[i]].falling()) {
-      engine.NoteOff(i);
-      --notes_on;
-    }
-  }
-  if (0 == notes_on && !clk_run) {
-    DAC::SetGate(false);
   }
 
   if (inputs[TAP_NEXT].rising()) {
     DAC::SetGate(engine.Advance());
+    if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
   }
   if (inputs[TAP_NEXT].falling()) {
     DAC::SetGate(false);
@@ -333,18 +331,21 @@ void loop() {
 
   // regular pattern write mode
   if (!edit_mode && write_mode && !track_mode) {
+
     if (engine.get_mode() == TIME_MODE) {
       if (input_time()) { // record time
         engine.Advance();
         if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
       }
     }
+
     if (engine.get_mode() == PITCH_MODE) {
       if (input_pitch()) { // record pitch
         engine.Advance();
         if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
       }
     }
+
   }
 
   if (clk_run) {
@@ -363,5 +364,6 @@ void loop() {
   ++ticks;
 
   // send DAC every other tick...
-  if (0 == (ticks & 0x1)) DAC::Send();
+  //if (0 == (ticks & 0x1))
+  DAC::Send();
 }

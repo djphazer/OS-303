@@ -50,7 +50,7 @@ struct Sequence {
   }
   // 6-bit pitch
   const uint8_t get_pitch() const {
-    int p = (pitch[pitch_pos] & 0x0f) + 24;
+    uint8_t p = (pitch[pitch_pos] & 0x0f) + 24;
     switch (get_octave()) {
       case OCTAVE_DOWN:
         p -= 12;
@@ -327,8 +327,7 @@ struct Engine {
     return get_sequence().get_accent() && clk_count < 3;
   }
   uint8_t get_pitch(bool run = false) const {
-    if (!run)
-      return cv_out_;
+    //if (!run) return cv_out_;
     return pattern[p_select].get_pitch();
   }
   bool get_slide() const {
