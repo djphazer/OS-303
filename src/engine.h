@@ -184,7 +184,7 @@ struct Engine {
   SequencerMode mode_ = NORMAL_MODE;
   //uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
 
-  uint8_t clk_count = 0;
+  int8_t clk_count = -1;
 
   uint8_t cv_out_ = 0; // semitone
 
@@ -260,7 +260,7 @@ struct Engine {
     bool send_note = false;
     ++clk_count %= 6;
 
-    if (clk_count == 1) { // sixteenth note advance
+    if (clk_count == 0) { // sixteenth note advance
       send_note = Advance();
       //delay_timer = 0;
     }
@@ -273,7 +273,7 @@ struct Engine {
 
   void Reset() {
     pattern[p_select].Reset();
-    clk_count = 0;
+    clk_count = -1;
     gate_on = false;
     slide_on = false;
   }
@@ -307,10 +307,10 @@ struct Engine {
 
   bool get_gate() const {
     return //delay_timer > 0 && 
-      (clk_count < 4 || slide_on);
+      (clk_count < 3 || slide_on);
   }
   bool get_accent() const {
-    return get_sequence().get_accent() && clk_count < 3;
+    return get_sequence().get_accent() && clk_count < 2;
   }
   uint8_t get_pitch() const {
     return cv_out_;
