@@ -197,6 +197,7 @@ struct Engine {
   bool slide_on = false; // flag to keep raised
   bool gate_on = false;
   bool stale = false;
+  bool resting = false; // hey shutup
 
   // actions
   void Load() {
@@ -273,6 +274,7 @@ struct Engine {
 
     // hmmmm
     slide_on = get_slide() || pattern[p_select].is_tied();
+    resting = !send_note;
 
     return send_note;
   }
@@ -312,8 +314,8 @@ struct Engine {
   const Sequence &get_sequence() const { return pattern[p_select]; }
 
   bool get_gate() const {
-    return //delay_timer > 0 && 
-      (clk_count < 3 || slide_on);
+    //delay_timer > 0 && 
+    return (clk_count < 3 || slide_on) && !resting;
   }
   bool get_accent() const {
     return get_sequence().get_accent() && clk_count < 2;
