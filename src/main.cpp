@@ -144,6 +144,23 @@ void setup() {
   engine.Load();
 }
 
+void PrintPitch() {
+  const uint8_t pitch = engine.get_pitch() & 0x0f;
+  Leds::Set(pitch_leds[pitch % 13], true);
+
+  Leds::Set(ACCENT_KEY_LED, engine.get_accent());
+  Leds::Set(SLIDE_KEY_LED, engine.get_slide());
+  Leds::Set(DOWN_KEY_LED,
+            engine.get_sequence().get_octave() == OCTAVE_DOWN ||
+                engine.get_sequence().get_octave() == OCTAVE_DOUBLE_UP);
+  Leds::Set(UP_KEY_LED, engine.get_sequence().get_octave() > OCTAVE_ZERO);
+}
+void PrintTime() {
+  Leds::Set(DOWN_KEY_LED, engine.get_time() == 1);
+  Leds::Set(UP_KEY_LED, engine.get_time() == 2);
+  Leds::Set(ACCENT_KEY_LED, engine.get_time() == 0);
+}
+
 void loop() {
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
@@ -184,15 +201,7 @@ void loop() {
           input_pitch();
         }
 
-        const uint8_t pitch = engine.get_pitch() & 0x0f;
-        Leds::Set(pitch_leds[pitch % 13], true);
-
-        Leds::Set(ACCENT_KEY_LED, engine.get_accent());
-        Leds::Set(SLIDE_KEY_LED, engine.get_slide());
-        Leds::Set(DOWN_KEY_LED,
-                  engine.get_sequence().get_octave() == OCTAVE_DOWN ||
-                      engine.get_sequence().get_octave() == OCTAVE_DOUBLE_UP);
-        Leds::Set(UP_KEY_LED, engine.get_sequence().get_octave() > OCTAVE_ZERO);
+        PrintPitch();
         break;
       }
       case TIME_MODE:
@@ -200,19 +209,22 @@ void loop() {
           input_time();
         }
 
-        Leds::Set(DOWN_KEY_LED, engine.get_time() == 1);
-        Leds::Set(UP_KEY_LED, engine.get_time() == 2);
-        Leds::Set(ACCENT_KEY_LED, engine.get_time() == 0);
+        PrintTime();
       case NORMAL_MODE:
         break;
     }
   } else { // not holding a modifier
     switch (engine.get_mode()) {
       case PITCH_MODE:
-      case TIME_MODE:
-        if (!write_mode)
-          engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
+        PrintPitch();
+        if (!write_mode) engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
         break;
+
+      case TIME_MODE:
+        PrintTime();
+        if (!write_mode) engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
+        break;
+
       case NORMAL_MODE:
         // flash LED for current pattern
         Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
