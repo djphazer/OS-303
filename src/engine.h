@@ -23,8 +23,8 @@ enum SequencerMode {
 };
 
 enum OctaveState {
-  OCTAVE_ZERO,
   OCTAVE_DOWN,
+  OCTAVE_ZERO,
   OCTAVE_UP,
   OCTAVE_DOUBLE_UP,
 };
