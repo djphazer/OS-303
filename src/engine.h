@@ -41,6 +41,7 @@ struct Sequence {
 
   // state
   int pitch_pos, time_pos;
+  bool reset; // hold plz
 
   // --- functions
   const uint8_t get_octave() const {
@@ -84,7 +85,7 @@ struct Sequence {
   void SetLength(uint8_t len) { length = constrain(len, 1, MAX_STEPS); }
   void SetOctave(int oct) {
     CONSTRAIN(oct, 0, 3);
-    pitch[pitch_pos] = (uint8_t(oct) & 0x3 << 4) | (pitch[pitch_pos] & 0xcf);
+    pitch[pitch_pos] = (uint8_t(oct & 0x3) << 4) | (pitch[pitch_pos] & 0xcf);
   }
 
   void ToggleSlide() { pitch[pitch_pos] ^= (1 << 7); }
@@ -111,6 +112,7 @@ struct Sequence {
   void Reset() {
     pitch_pos = 0;
     time_pos = 0;
+    reset = true;
   }
   void Clear() {
     for (uint8_t i = 0; i < MAX_STEPS; ++i) {
@@ -122,6 +124,10 @@ struct Sequence {
 
   // returns false for rests
   bool Advance() {
+    if (reset) {
+      reset = false;
+      return true;
+    }
     ++time_pos %= length;
     if (time_pos == 0)
       pitch_pos = 0;
@@ -253,12 +259,17 @@ struct Engine {
 
   // returns false for rests
   bool Advance() {
-    const bool result = pattern[p_select].Advance();
+    bool result = get_sequence().Advance();
     // jump to next pattern at end of current one
-    if (0 == pattern[p_select].time_pos && next_p != p_select)
+    if (0 == get_sequence().time_pos && next_p != p_select) {
       p_select = next_p;
-    // but don't bother updating result to step 0 on new pattern, pfft
-    if (result) cv_out_ = pattern[p_select].get_pitch();
+      get_sequence().Reset();
+      result = get_sequence().Advance();
+    }
+    if (result) {
+      cv_out_ = get_sequence().get_pitch();
+      slide_on = get_slide();
+    }
     return result;
   }
 
@@ -273,14 +284,14 @@ struct Engine {
     }
 
     // hmmmm
-    slide_on = get_slide() || pattern[p_select].is_tied();
+    slide_on = get_slide() || get_sequence().is_tied();
     resting = !send_note;
 
     return send_note;
   }
 
   void Reset() {
-    pattern[p_select].Reset();
+    get_sequence().Reset();
     clk_count = -1;
     gate_on = false;
     slide_on = false;
@@ -288,9 +299,9 @@ struct Engine {
 
   void Generate() {
     if (mode_ == PITCH_MODE)
-      pattern[p_select].RegenPitch();
+      get_sequence().RegenPitch();
     else if (mode_ == TIME_MODE)
-      pattern[p_select].RegenTime();
+      get_sequence().RegenTime();
   }
 
   void ClearPattern(uint8_t idx) {
@@ -324,10 +335,10 @@ struct Engine {
     return cv_out_;
   }
   bool get_slide() const {
-    return pattern[p_select].get_slide();
+    return get_sequence().get_slide();
   }
   uint8_t get_time_pos() const {
-    return pattern[p_select].time_pos;
+    return get_sequence().time_pos;
   }
   uint8_t get_patsel() const {
     return p_select;
@@ -336,10 +347,10 @@ struct Engine {
     return next_p;
   }
   const uint8_t get_time() const {
-    return pattern[p_select].get_time();
+    return get_sequence().get_time();
   }
   const uint8_t get_length() const {
-    return pattern[p_select].length;
+    return get_sequence().length;
   }
 
   // setters
@@ -348,36 +359,36 @@ struct Engine {
     if (override) p_select = next_p;
   }
   void SetLength(uint8_t len) {
-    pattern[p_select].SetLength(len);
+    get_sequence().SetLength(len);
     stale = true;
   }
   bool BumpLength() {
-    return pattern[p_select].BumpLength();
+    return get_sequence().BumpLength();
     stale = true;
   }
   void SetMode(SequencerMode m) {
     mode_ = m;
   }
   void NudgeOctave(int dir) {
-    get_sequence().SetOctave(get_sequence().get_octave() + dir);
+    get_sequence().SetOctave(int(get_sequence().get_octave()) + dir);
   }
   void SetPitch(uint8_t p, uint8_t flags) {
     get_sequence().SetPitch(p, flags);
     stale = true;
   }
   void SetTime(uint8_t t) {
-    pattern[p_select].SetTime(t);
+    get_sequence().SetTime(t);
     stale = true;
   }
 
   void ToggleSlide() {
     if (mode_ == PITCH_MODE)
-      pattern[p_select].ToggleSlide();
+      get_sequence().ToggleSlide();
     stale = true;
   }
   void ToggleAccent() {
     if (mode_ == PITCH_MODE)
-      pattern[p_select].ToggleAccent();
+      get_sequence().ToggleAccent();
     stale = true;
   }
 
