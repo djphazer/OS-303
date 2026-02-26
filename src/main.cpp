@@ -31,10 +31,9 @@ static Engine engine;
 bool input_pitch() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (inputs[pitched_keys[i]].rising()) {
+      const uint8_t oct = 1 - inputs[DOWN_KEY].held() + inputs[UP_KEY].held();
       engine.SetPitch(i, (inputs[ACCENT_KEY].held() << 6) |
-                         (inputs[SLIDE_KEY].held() << 7) |
-                         (inputs[DOWN_KEY].held() << 4) |
-                         (inputs[UP_KEY].held() << 5));
+                         (inputs[SLIDE_KEY].held() << 7) | (oct << 4));
       return true;
     }
   }
@@ -186,12 +185,14 @@ void loop() {
         }
 
         const uint8_t pitch = engine.get_pitch();
-        Leds::Set(pitch_leds[pitch % 12], true);
+        Leds::Set(pitch_leds[pitch % 13], true);
 
         Leds::Set(ACCENT_KEY_LED, engine.get_accent());
         Leds::Set(SLIDE_KEY_LED, engine.get_slide());
-        Leds::Set(DOWN_KEY_LED, engine.get_sequence().get_octave() & 0x1);
-        Leds::Set(UP_KEY_LED, engine.get_sequence().get_octave() & 0x2);
+        Leds::Set(DOWN_KEY_LED,
+                  engine.get_sequence().get_octave() == OCTAVE_DOWN ||
+                      engine.get_sequence().get_octave() == OCTAVE_DOUBLE_UP);
+        Leds::Set(UP_KEY_LED, engine.get_sequence().get_octave() > OCTAVE_ZERO);
         break;
       }
       case TIME_MODE:
@@ -381,13 +382,13 @@ void loop() {
 
   if (clk_run) {
     // send sequence step
-    DAC::SetPitch(engine.get_pitch(true));
+    DAC::SetPitch(engine.get_pitch());
     DAC::SetSlide(engine.get_slide());
     DAC::SetAccent(engine.get_accent());
     DAC::SetGate(engine.get_gate());
   } else {
     // not run mode - send notes from keys
-    DAC::SetPitch(engine.get_pitch(false));
+    DAC::SetPitch(engine.get_pitch());
     DAC::SetSlide(inputs[SLIDE_KEY].held());
     DAC::SetAccent(inputs[ACCENT_KEY].held());
   }

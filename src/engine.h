@@ -48,24 +48,9 @@ struct Sequence {
   const uint8_t get_octave() const {
     return pitch[pitch_pos] >> 4 & 0x3;
   }
-  // 6-bit pitch
+  // 4-bit pitch with 2-bit octave flags
   const uint8_t get_pitch() const {
-    uint8_t p = (pitch[pitch_pos] & 0x0f) + 24;
-    switch (get_octave()) {
-      case OCTAVE_DOWN:
-        p -= 12;
-        break;
-      case OCTAVE_UP:
-        p += 12;
-        break;
-      case OCTAVE_DOUBLE_UP:
-        p += 24;
-        break;
-      default:
-        break;
-    }
-    if (p < 0) p = 0;
-    return p;
+    return pitch[pitch_pos] & 0x3f;
   }
   const uint8_t get_accent() const {
     return pitch[pitch_pos] & (1<<6);
@@ -327,7 +312,7 @@ struct Engine {
   bool get_accent() const {
     return get_sequence().get_accent() && clk_count < 3;
   }
-  uint8_t get_pitch(bool run = false) const {
+  uint8_t get_pitch() const {
     return cv_out_;
   }
   bool get_slide() const {
