@@ -39,7 +39,7 @@ struct Sequence {
   uint8_t length = 16;
 
   const uint8_t time(uint8_t idx) const {
-    return (time_data[idx >> 1] >> (idx & 1)) & 0xf;
+    return (time_data[idx >> 1] >> 4*(idx & 1)) & 0xf;
   }
 
   // state
