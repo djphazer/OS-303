@@ -268,7 +268,7 @@ struct Engine {
     }
     if (result) {
       cv_out_ = get_sequence().get_pitch();
-      slide_on = get_slide();
+      slide_on = get_slide() || get_sequence().is_tied();
     }
     return result;
   }
@@ -283,8 +283,6 @@ struct Engine {
       //delay_timer = 0;
     }
 
-    // hmmmm
-    slide_on = get_slide() || get_sequence().is_tied();
     resting = !send_note;
 
     return send_note;
