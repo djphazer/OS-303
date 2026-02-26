@@ -30,21 +30,19 @@ enum OctaveState {
 };
 
 struct Sequence {
-  // data
+  // --- sequence data - 64 bytes
                                  // TODO: octave up/down flags?
   uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
   uint8_t time_data[MAX_STEPS/2];  // 0=rest, 1=note, 2=tie, 3=triplets?
   // time is stored as nibbles, so there's actually a lot of padding
   uint8_t reserved[MAX_STEPS/2 - 1];
   uint8_t length = 16;
-
-  const uint8_t time(uint8_t idx) const {
-    return (time_data[idx >> 1] >> 4*(idx & 1)) & 0xf;
-  }
+  // --- end sequence data
 
   // state
-  uint8_t pitch_pos, time_pos;
+  int pitch_pos, time_pos;
 
+  // --- functions
   const uint8_t get_octave() const {
     return pitch[pitch_pos] >> 4 & 0x3;
   }
@@ -63,6 +61,9 @@ struct Sequence {
   }
   const bool is_tied() const {
     return time_pos < length && time(time_pos+1) == 2;
+  }
+  inline uint8_t time(uint8_t idx) const {
+    return (time_data[idx >> 1] >> 4*(idx & 1)) & 0xf;
   }
   const uint8_t get_time() const {
     return time(time_pos);
@@ -127,6 +128,11 @@ struct Sequence {
     else if (time(time_pos) == 1)
       ++pitch_pos;
     return time(time_pos);
+  }
+
+  // used in write mode
+  void AdvancePitch() {
+    ++pitch_pos %= MAX_STEPS;
   }
 };
 

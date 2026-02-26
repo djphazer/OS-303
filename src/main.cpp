@@ -288,12 +288,6 @@ void loop() {
 
   if (inputs[FUNCTION_KEY].falling()) step_counter = false;
 
-  // catch falling edge of RUN
-  if (inputs[RUN].falling()) {
-    DAC::SetGate(false);
-    engine.Reset();
-  }
-
   // process all MIDI here
   bool clocked = false;
   static bool midi_clk = false;
@@ -367,14 +361,16 @@ void loop() {
     if (engine.get_mode() == TIME_MODE) {
       if (input_time()) { // record time
         engine.Advance();
-        if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
+        if (engine.get_time_pos() == 0)
+          engine.SetMode(NORMAL_MODE);
       }
     }
 
     if (engine.get_mode() == PITCH_MODE) {
       if (input_pitch()) { // record pitch
-        engine.Advance();
-        if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
+        engine.get_sequence().AdvancePitch();
+        if (engine.get_sequence().pitch_pos == 0)
+          engine.SetMode(NORMAL_MODE);
       }
     }
 
@@ -391,6 +387,12 @@ void loop() {
     DAC::SetPitch(engine.get_pitch());
     DAC::SetSlide(inputs[SLIDE_KEY].held());
     DAC::SetAccent(inputs[ACCENT_KEY].held());
+  }
+
+  // catch falling edge of RUN
+  if (inputs[RUN].falling()) {
+    DAC::SetGate(false);
+    engine.Reset();
   }
 
   ++ticks;
