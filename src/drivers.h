@@ -10,12 +10,12 @@ static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
 //
 
 namespace DAC {
-  static uint8_t pitch_;
-  static bool slide_ = false;
-  static bool accent_ = false;
-  static bool gate_ = false;
+  static uint8_t pitch_ = 0;
+  static uint8_t slide_ = false;
+  static uint8_t accent_ = false;
+  static uint8_t gate_ = false;
 
-  void Send() {
+  inline void Send() {
     // send to gate pin
     //digitalWriteFast(PI2_PIN, gate_ ? HIGH : LOW);
     // send to accent pin
@@ -25,7 +25,7 @@ namespace DAC {
     PORTE = (gate_ << 1) | (accent_ << 6);
 
     // set 6-bit pitch for CV Out
-    PORTC = pitch_ & 0x3f;
+    PORTC = pitch_; // & 0x3f;
 
     PORTE |= 0x1; // latch and slide
     if (!slide_) // turn slide bit back off
@@ -43,16 +43,16 @@ namespace DAC {
     */
   }
 
-  void SetPitch(uint8_t p) {
+  inline void SetPitch(uint8_t p) {
     pitch_ = p;
   }
-  void SetGate(bool on) {
+  inline void SetGate(bool on) {
     gate_ = on;
   }
-  void SetAccent(bool on) {
+  inline void SetAccent(bool on) {
     accent_ = on;
   }
-  void SetSlide(bool on) {
+  inline void SetSlide(bool on) {
     slide_ = on;
   }
 } // namespace DAC

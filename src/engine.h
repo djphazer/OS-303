@@ -266,6 +266,7 @@ struct Engine {
     if (0 == pattern[p_select].time_pos && next_p != p_select)
       p_select = next_p;
     // but don't bother updating result to step 0 on new pattern, pfft
+    if (result) cv_out_ = pattern[p_select].get_pitch();
     return result;
   }
 
@@ -327,8 +328,7 @@ struct Engine {
     return get_sequence().get_accent() && clk_count < 3;
   }
   uint8_t get_pitch(bool run = false) const {
-    //if (!run) return cv_out_;
-    return pattern[p_select].get_pitch();
+    return cv_out_;
   }
   bool get_slide() const {
     return pattern[p_select].get_slide();

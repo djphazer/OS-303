@@ -81,16 +81,18 @@ void setup() {
 
   const MatrixPin ledseq[] = {
     switched_leds[16 + 2],
-    switched_leds[8],
-    switched_leds[9],
-    switched_leds[10],
-    switched_leds[11],
+    switched_leds[12],
+    switched_leds[13],
+    switched_leds[14],
+    switched_leds[15],
     switched_leds[16 + 1],
     switched_leds[16 + 0],
-    switched_leds[15],
-    switched_leds[14],
-    switched_leds[13],
-    switched_leds[12],
+
+    switched_leds[11],
+    switched_leds[10],
+    switched_leds[9],
+    switched_leds[8],
+
     switched_leds[7],
     switched_leds[6],
     switched_leds[5],
@@ -99,6 +101,31 @@ void setup() {
     switched_leds[2],
     switched_leds[1],
     switched_leds[0],
+  };
+  const MatrixPin note_led[] = {
+    switched_leds[0],
+
+    switched_leds[12],
+
+    switched_leds[1],
+
+    switched_leds[13],
+
+    switched_leds[2],
+    switched_leds[3],
+
+    switched_leds[14],
+
+    switched_leds[4],
+
+    switched_leds[15],
+
+    switched_leds[5],
+
+    switched_leds[16 + 1],
+
+    switched_leds[6],
+    switched_leds[7],
   };
 
   int x = 2;
@@ -110,6 +137,22 @@ void setup() {
       delay(10);
     }
   } while (--x > 0);
+
+  // 4-octave arpeggio test for all 13 semitones
+  for (uint8_t i = 0; i <= 12; ++i) {
+    Leds::Set(note_led[i], true);
+    for (uint8_t j = 0; j < 8; ++j) {
+      DAC::SetPitch(24 + i + 12*(j&1));
+      DAC::SetGate(true);
+      DAC::SetAccent(i & 1);
+      DAC::Send();
+      delay(100);
+      DAC::SetGate(false);
+      DAC::Send();
+      delay(100);
+    }
+    Leds::Set(note_led[i], false);
+  }
 
   engine.Load();
 }
