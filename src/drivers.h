@@ -45,7 +45,7 @@ namespace DAC {
   }
 
   inline void SetPitch(uint8_t p, uint8_t oct = 0) {
-    pitch_ = p % 13;
+    pitch_ = p;
     octave_bits_ = oct;
   }
   inline void SetGate(bool on) {

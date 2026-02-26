@@ -184,7 +184,7 @@ void loop() {
           input_pitch();
         }
 
-        const uint8_t pitch = engine.get_pitch();
+        const uint8_t pitch = engine.get_pitch() & 0x0f;
         Leds::Set(pitch_leds[pitch % 13], true);
 
         Leds::Set(ACCENT_KEY_LED, engine.get_accent());
