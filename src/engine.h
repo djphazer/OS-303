@@ -281,9 +281,8 @@ struct Engine {
     if (clk_count == 0) { // sixteenth note advance
       send_note = Advance();
       //delay_timer = 0;
+      resting = !send_note;
     }
-
-    resting = !send_note;
 
     return send_note;
   }
