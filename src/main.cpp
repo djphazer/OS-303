@@ -62,6 +62,49 @@ bool input_time() {
 
 // ===== MAIN CODE LOGIC =====
 
+const MatrixPin note_led[] = {
+  switched_leds[0],
+  switched_leds[12],
+  switched_leds[1],
+  switched_leds[13],
+  switched_leds[2],
+  switched_leds[3],
+  switched_leds[14],
+  switched_leds[4],
+  switched_leds[15],
+  switched_leds[5],
+  switched_leds[16 + 1],
+  switched_leds[6],
+  switched_leds[7],
+};
+void PewPew(uint8_t note, const bool accent = false) {
+  Leds::Set(note_led[note], true);
+  for (uint8_t oct = 0; oct < 4; ++oct) {
+    DAC::SetPitch(note, accent ? 4 - oct : oct);
+    DAC::SetGate(true);
+    DAC::SetSlide(oct == 0); // PEW!
+    DAC::SetAccent(accent);
+    // DAC::SetAccent(random(2));
+    DAC::Send();
+    delay(40);
+    DAC::SetGate(false);
+    DAC::Send();
+    delay(10);
+  }
+  Leds::Set(note_led[note], false);
+  DAC::SetSlide(false);
+  DAC::SetAccent(false);
+}
+void PewPewPew() {
+  for (uint8_t note = 0; note <= 12; ++note) {
+    // ascending
+    PewPew(note, false); // accent off
+  }
+  for (uint8_t note = 0; note <= 12; ++note) {
+    // descending
+    PewPew(12 - note, true); // accent on
+  }
+}
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
@@ -98,21 +141,6 @@ void setup() {
     switched_leds[2],
     switched_leds[1],
     switched_leds[0],
-  };
-  const MatrixPin note_led[] = {
-    switched_leds[0],
-    switched_leds[12],
-    switched_leds[1],
-    switched_leds[13],
-    switched_leds[2],
-    switched_leds[3],
-    switched_leds[14],
-    switched_leds[4],
-    switched_leds[15],
-    switched_leds[5],
-    switched_leds[16 + 1],
-    switched_leds[6],
-    switched_leds[7],
   };
   const OutputIndex loadingbar[] = {
     PITCH_MODE_LED, FUNCTION_MODE_LED,
@@ -174,21 +202,8 @@ void setup() {
     Leds::Send(3, true);
   }
 
-  // 4-octave arpeggio test for all 13 semitones
-  for (uint8_t note = 0; note <= 12; ++note) {
-    Leds::Set(note_led[note], true);
-    for (uint8_t oct = 0; oct < 4; ++oct) {
-      DAC::SetPitch(note, oct);
-      DAC::SetGate(true);
-      DAC::SetAccent(random(2));
-      DAC::Send();
-      delay(50);
-      DAC::SetGate(false);
-      DAC::Send();
-      delay(25);
-    }
-    Leds::Set(note_led[note], false);
-  }
+  // 4-octave pewpew test for all 13 semitones
+  PewPewPew();
 
   engine.Load();
 }
@@ -329,7 +344,7 @@ void loop() {
   if (inputs[PITCH_KEY].rising()) engine.SetMode(PITCH_MODE);
   if (inputs[FUNCTION_KEY].rising()) engine.SetMode(NORMAL_MODE);
 
-  if (inputs[BACK_KEY].rising()) engine.Reset();
+  if (inputs[CLEAR_KEY].rising()) engine.Reset();
 
   if (fn_mod && write_mode) {
     if (step_counter) {
