@@ -1,7 +1,7 @@
 // Copyright (c) 2026, Nicholas J. Michalek
 //
 
-#define DEBUG 1
+#define DEBUG 0
 
 #include <Arduino.h>
 #include "pins.h"
