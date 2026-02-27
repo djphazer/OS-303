@@ -61,7 +61,7 @@ struct Sequence {
     return get_slide(pitch_pos);
   }
   const bool is_tied() const {
-    return time_pos < length && time(time_pos+1) == 2;
+    return (time_pos < length) && (time(time_pos+1) == 2);
   }
   inline uint8_t time(uint8_t idx) const {
     return (time_data[idx >> 1] >> 4*(idx & 1)) & 0xf;
@@ -324,7 +324,7 @@ struct Engine {
 
   bool get_gate() const {
     //delay_timer > 0 && 
-    return (clk_count < 3 || slide_on) && !resting;
+    return ((clk_count < 3) || slide_on) && !resting;
   }
   bool get_accent() const {
     return get_sequence().get_accent() && clk_count < 2;
