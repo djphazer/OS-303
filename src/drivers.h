@@ -90,7 +90,7 @@ namespace Leds {
     }
   }
 
-  void Send(const uint8_t tick) {
+  void Send(const uint8_t tick, const bool clear = true) {
     //const uint8_t cycle = (tick >> 2) & 0x3; // scanner for select pins, bits 0-3
 
     // switched LEDs
@@ -103,10 +103,12 @@ namespace Leds {
       digitalWriteFast(switched_leds[i].led, (ledstate[2] & (1 << (i-16))) ? HIGH : LOW);
     }
 
-    // blank slate for next time
-    ledstate[0] = 0;
-    ledstate[1] = 0;
-    ledstate[2] = 0;
+    if (clear) {
+      // blank slate for next time
+      ledstate[0] = 0;
+      ledstate[1] = 0;
+      ledstate[2] = 0;
+    }
   }
 
 } // namespace Leds

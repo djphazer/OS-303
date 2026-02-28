@@ -114,16 +114,65 @@ void setup() {
     switched_leds[6],
     switched_leds[7],
   };
+  const OutputIndex loadingbar[] = {
+    PITCH_MODE_LED, FUNCTION_MODE_LED,
+    C_KEY_LED, CSHARP_KEY_LED,
+    D_KEY_LED, DSHARP_KEY_LED,
+    E_KEY_LED, F_KEY_LED, FSHARP_KEY_LED,
+    G_KEY_LED, GSHARP_KEY_LED,
+    A_KEY_LED, ASHARP_KEY_LED,
+    B_KEY_LED, C_KEY2_LED, DOWN_KEY_LED, UP_KEY_LED,
+    TIME_MODE_LED, ACCENT_KEY_LED, SLIDE_KEY_LED
+  };
 
-  int x = 2;
-  do {
-    for (uint8_t i = 0; i < ARRAY_SIZE(ledseq); ++i) {
-      Leds::Set(ledseq[i], true);
-      delay(50);
-      Leds::Set(ledseq[i], false);
-      delay(10);
+
+  // once backward
+  /*
+  const int len = ARRAY_SIZE(ledseq);
+  for (uint8_t i = 0; i < len; ++i) {
+    Leds::Set(ledseq[len - i], true);
+    delay(50);
+    Leds::Set(ledseq[len - i], false);
+    delay(10);
+  }
+  */
+
+  // making progress
+  elapsedMillis timer = 0;
+  const uint8_t len = ARRAY_SIZE(loadingbar);
+  for (uint8_t i = 0; i < len; ++i) {
+    Leds::Set(loadingbar[i], true);
+    for (int tail = i; tail > 0 && tail > i-4; --tail) {
+      Leds::Set(loadingbar[tail-1], true);
     }
-  } while (--x > 0);
+    while (timer < 100) {
+      Leds::Send(timer, false); // don't clear
+      delay(1);
+    }
+    timer = 0;
+    // clear
+    Leds::Send(0, true);
+    Leds::Send(1, true);
+    Leds::Send(2, true);
+    Leds::Send(3, true);
+  }
+  // backwards progress
+  for (uint8_t i = 0; i < len; ++i) {
+    Leds::Set(loadingbar[len - i], true);
+    for (int tail = len - i; tail < len; ++tail) {
+      Leds::Set(loadingbar[tail-1], true);
+    }
+    while (timer < 100) {
+      Leds::Send(timer, false); // don't clear
+      delay(1);
+    }
+    timer = 0;
+    // clear
+    Leds::Send(0, true);
+    Leds::Send(1, true);
+    Leds::Send(2, true);
+    Leds::Send(3, true);
+  }
 
   // 4-octave arpeggio test for all 13 semitones
   for (uint8_t note = 0; note <= 12; ++note) {
