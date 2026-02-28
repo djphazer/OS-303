@@ -27,10 +27,11 @@ jobs:
       with:
         python-version: '3.x'
         cache: 'pip'
+        cache-dependency-path: '**/requirements.txt'
 
     - run: |
         pip3 install --upgrade pip
-        pip3 install platformio
+        pip3 install -r .github/workflows/requirements.txt
 
     - name: Build firmware
       working-directory: /
