@@ -11,4 +11,4 @@ def get_git_rev():
 
 git_rev = get_git_rev()
 
-env.Replace(PROGNAME=f"OS-303_v%s_{git_rev}" % env.GetProjectOption("project_version"))
+env.Replace(PROGNAME=f"OS-303_v%s_{git_rev}" % env.GetProjectOption("custom_project_version"))
