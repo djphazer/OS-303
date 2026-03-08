@@ -428,8 +428,9 @@ void loop() {
   }
 
   if (inputs[TAP_NEXT].rising()) {
+    bool hold_plz = engine.get_sequence().reset;
     DAC::SetGate(engine.Advance());
-    if (engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
+    if (!hold_plz && engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
   }
   if (inputs[TAP_NEXT].falling()) {
     DAC::SetGate(false);
@@ -440,16 +441,18 @@ void loop() {
 
     if (engine.get_mode() == TIME_MODE) {
       if (input_time()) { // record time
+        bool hold_plz = engine.get_sequence().reset;
         engine.Advance();
-        if (engine.get_time_pos() == 0)
+        if (!hold_plz && engine.get_time_pos() == 0)
           engine.SetMode(NORMAL_MODE);
       }
     }
 
     if (engine.get_mode() == PITCH_MODE) {
       if (input_pitch()) { // record pitch
+        bool hold_plz = engine.get_sequence().reset;
         engine.get_sequence().AdvancePitch();
-        if (engine.get_sequence().pitch_pos == 0)
+        if (!hold_plz && engine.get_sequence().pitch_pos == 0)
           engine.SetMode(NORMAL_MODE);
       }
     }
