@@ -12,6 +12,9 @@
 #include <util/delay.h>
 #include <stdint.h>
 
+#include "sync.h"
+
+#define APP_ADDRESS 0x0000
 #define PAGE_SIZE 256
 #define SYSEX_MAX 400
 
@@ -79,14 +82,13 @@ static void jump_to_app(void) {
   cli();
 
   // If application not blank
-  if (*(uint16_t *)0x0000 != 0xFFFF) {
-    void (*app)(void) = 0x0000;
-    app();
+  if (*(uint16_t *)APP_ADDRESS != 0xFFFF) {
+    ((void (*)(void))APP_ADDRESS)();
   }
 
-  // Otherwise stay here forever
-  while (1)
-    ;
+  // Otherwise stay here forever?
+  //while (1) ;
+  // nah, we'll just dump back into the updater
 }
 
 static void process_sysex(uint8_t *data, uint16_t len) {
@@ -137,21 +139,23 @@ static void midi_task(void) {
 }
 
 int main(void) {
-  uart_init();
   DDRF = 0xFF; // select pin outputs
   DDRB = 0x00; // button inputs
-  DDRD &= 0xF0; // direct LED outputs (but also the MIDI serial lines)
+  DDRD |= 0xF0; // direct LED outputs (but also the MIDI serial lines)
+  uart_init();
 
   // check for button combo to stop the jump
+  PORTF = 0x00;
   PORTF = 0x0F;
   _delay_ms(1);
-  if (~PORTB & (1 << 1)) // hold WRITE/NEXT/TAP to stay in bootloader
-    jump_to_app();
-
-  // indicate bootloader mode: TIME, PITCH, FUNCTION, and A# key LEDS, all on
-  PORTD |= 0xF0;
-
-  while (1) {
-    midi_task();
+  boot_sync_flag = 1;
+  if (PINB & (1 << 1)) { // hold WRITE/NEXT/TAP to stay in bootloader
+    // indicate bootloader mode: TIME, PITCH, FUNCTION, and A# key LEDS, all on
+    PORTD |= 0xF0;
+    while (1) {
+      midi_task();
+    }
   }
+
+  jump_to_app();
 }
