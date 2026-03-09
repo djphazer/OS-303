@@ -9,6 +9,7 @@
 #include <avr/boot.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <util/delay.h>
 #include <stdint.h>
 
 #define PAGE_SIZE 256
@@ -104,11 +105,13 @@ static void process_sysex(uint8_t *data, uint16_t len) {
     if (packed_len + 5 > len)
       return;
 
+    PORTD &= 0x0F; // turn LEDs off while writing
     decode_7bit(&data[5], packed_len, page_buffer);
     flash_write_page(page);
   } else if (cmd == 0x02) {
     jump_to_app();
   }
+  PORTD |= 0xF0; // turn LEDs back on
 }
 
 static void midi_task(void) {
@@ -135,9 +138,18 @@ static void midi_task(void) {
 
 int main(void) {
   uart_init();
+  DDRF = 0xFF; // select pin outputs
+  DDRB = 0x00; // button inputs
+  DDRD &= 0xF0; // direct LED outputs (but also the MIDI serial lines)
 
-  // TODO: check for button combo to stop the jump
-  jump_to_app();
+  // check for button combo to stop the jump
+  PORTF = 0x0F;
+  _delay_ms(1);
+  if (~PORTB & (1 << 1)) // hold WRITE/NEXT/TAP to stay in bootloader
+    jump_to_app();
+
+  // indicate bootloader mode: TIME, PITCH, FUNCTION, and A# key LEDS, all on
+  PORTD |= 0xF0;
 
   while (1) {
     midi_task();
