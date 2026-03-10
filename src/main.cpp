@@ -128,6 +128,20 @@ void setup() {
 
   Serial.begin(9600);
 
+  const OutputIndex loadingbar[] = {
+    PITCH_MODE_LED, FUNCTION_MODE_LED,
+    C_KEY_LED, CSHARP_KEY_LED,
+    D_KEY_LED, DSHARP_KEY_LED,
+    E_KEY_LED, F_KEY_LED, FSHARP_KEY_LED,
+    G_KEY_LED, GSHARP_KEY_LED,
+    A_KEY_LED, ASHARP_KEY_LED,
+    B_KEY_LED, C_KEY2_LED, DOWN_KEY_LED, UP_KEY_LED,
+    TIME_MODE_LED, ACCENT_KEY_LED, SLIDE_KEY_LED
+  };
+
+
+  // once backward
+  /*
   const MatrixPin ledseq[] = {
     switched_leds[16 + 2],
     switched_leds[12],
@@ -149,20 +163,6 @@ void setup() {
     switched_leds[1],
     switched_leds[0],
   };
-  const OutputIndex loadingbar[] = {
-    PITCH_MODE_LED, FUNCTION_MODE_LED,
-    C_KEY_LED, CSHARP_KEY_LED,
-    D_KEY_LED, DSHARP_KEY_LED,
-    E_KEY_LED, F_KEY_LED, FSHARP_KEY_LED,
-    G_KEY_LED, GSHARP_KEY_LED,
-    A_KEY_LED, ASHARP_KEY_LED,
-    B_KEY_LED, C_KEY2_LED, DOWN_KEY_LED, UP_KEY_LED,
-    TIME_MODE_LED, ACCENT_KEY_LED, SLIDE_KEY_LED
-  };
-
-
-  // once backward
-  /*
   const int len = ARRAY_SIZE(ledseq);
   for (uint8_t i = 0; i < len; ++i) {
     Leds::Set(ledseq[len - i], true);
@@ -180,7 +180,7 @@ void setup() {
     for (int tail = i; tail > 0 && tail > i-4; --tail) {
       Leds::Set(loadingbar[tail-1], true);
     }
-    while (timer < 100) {
+    while (timer < 50) {
       Leds::Send(timer, false); // don't clear
       delay(1);
     }
@@ -197,7 +197,7 @@ void setup() {
     for (int tail = len - i; tail < len; ++tail) {
       Leds::Set(loadingbar[tail-1], true);
     }
-    while (timer < 100) {
+    while (timer < 50) {
       Leds::Send(timer, false); // don't clear
       delay(1);
     }
