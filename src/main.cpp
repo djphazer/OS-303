@@ -28,42 +28,56 @@ static Engine engine;
 
 // crucial bits tying together the inputs + engine
 
-bool input_pitch(bool mod = false) {
+uint8_t check_pitch_inputs() {
+  uint8_t notes = 0;
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
-    if (inputs[pitched_keys[i]].rising()) {
-      if (mod)
-        engine.SetPitch(i);
-      else {
-        const uint8_t oct = 1 - inputs[DOWN_KEY].held() + inputs[UP_KEY].held();
-        const uint8_t flags = (inputs[ACCENT_KEY].held() << 6) |
-                              (inputs[SLIDE_KEY].held() << 7) | (oct << 4);
-        engine.SetPitch(i, flags);
-      }
-      return true;
+    if (inputs[pitched_keys[i]].held()) {
+      ++notes;
     }
   }
+  return notes;
+}
+bool check_time_inputs() {
+  if (inputs[DOWN_KEY].held()) { return true; }
+  if (inputs[UP_KEY].held()) { return true; }
+  if (inputs[ACCENT_KEY].held()) { return true; }
+  //if (inputs[SLIDE_KEY].held()) return true; // TODO: spicy time option, ratchets maybe
+  return false;
+}
+void input_pitch(bool mod = false) {
   if (mod) {
     if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
     if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
     if (inputs[UP_KEY].rising()) engine.NudgeOctave(1);
     if (inputs[DOWN_KEY].rising()) engine.NudgeOctave(-1);
   }
-  return false;
+  for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
+    if (inputs[pitched_keys[i]].rising()) {
+      if (mod)
+        engine.SetPitch(i);
+      else {
+        engine.get_sequence().AdvancePitch();
+        const uint8_t oct = 1 - inputs[DOWN_KEY].held() + inputs[UP_KEY].held();
+        const uint8_t flags = (inputs[ACCENT_KEY].held() << 6) |
+                              (inputs[SLIDE_KEY].held() << 7) | (oct << 4);
+        engine.SetPitch(i, flags);
+      }
+    }
+  }
 }
-bool input_time() {
+void input_time(bool mod = false) {
   if (inputs[DOWN_KEY].rising()) {
+    if (!mod) engine.Advance();
     engine.SetTime(1); // note
-    return true;
   }
   if (inputs[UP_KEY].rising()) {
+    if (!mod) engine.Advance();
     engine.SetTime(2); // tie
-    return true;
   }
   if (inputs[ACCENT_KEY].rising()) {
+    if (!mod) engine.Advance();
     engine.SetTime(0); // rest
-    return true;
   }
-  return false;
 }
 
 
@@ -301,7 +315,7 @@ void loop() {
       }
       case TIME_MODE:
         if (write_mode) {
-          input_time();
+          input_time(true);
         }
 
         PrintTime();
@@ -371,9 +385,9 @@ void loop() {
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2));
 
-  if (inputs[TIME_KEY].rising()) engine.SetMode(TIME_MODE);
-  if (inputs[PITCH_KEY].rising()) engine.SetMode(PITCH_MODE);
-  if (inputs[FUNCTION_KEY].rising()) engine.SetMode(NORMAL_MODE);
+  if (inputs[TIME_KEY].rising() && write_mode) engine.SetMode(TIME_MODE, !clk_run);
+  if (inputs[PITCH_KEY].rising() && write_mode) engine.SetMode(PITCH_MODE, !clk_run);
+  if (inputs[FUNCTION_KEY].rising()) engine.SetMode(NORMAL_MODE, !clk_run);
 
   if (inputs[CLEAR_KEY].rising()) engine.Reset();
 
@@ -409,59 +423,34 @@ void loop() {
     }
   }
 
-  if (engine.get_mode() == PITCH_MODE) {
-    // check all pitch keys...
-    uint8_t notes_on = 0;
-    for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
-      // any keypress sends a note - always?
-      if (inputs[pitched_keys[i]].rising()) {
-        if (write_mode) {
-          engine.NoteOn(i);
-          DAC::SetGate(true);
-        }
-      }
-      if (inputs[pitched_keys[i]].held()) {
-        ++notes_on;
-      }
-
-      if (inputs[pitched_keys[i]].falling()) {
-        engine.NoteOff(i);
-        --notes_on;
-      }
-    }
-    if (0 == notes_on && !clk_run) {
-      DAC::SetGate(false);
-    }
-  }
-
   if (inputs[TAP_NEXT].rising()) {
-    bool hold_plz = engine.get_sequence().reset;
     DAC::SetGate(engine.Advance());
-    if (!hold_plz && engine.get_time_pos() == 0) engine.SetMode(NORMAL_MODE);
   }
   if (inputs[TAP_NEXT].falling()) {
     DAC::SetGate(false);
+    if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
+      engine.SetMode(NORMAL_MODE, true);
   }
 
   // regular pattern write mode
   if (!edit_mode && write_mode && !track_mode) {
 
+    // ok, dilemma... we want to advance first, then record the step.
+
     if (engine.get_mode() == TIME_MODE) {
-      if (input_time()) { // record time
-        bool hold_plz = engine.get_sequence().reset;
-        engine.Advance();
-        if (!hold_plz && engine.get_time_pos() == 0)
-          engine.SetMode(NORMAL_MODE);
-      }
+      if (clk_run || check_time_inputs()) { // record time
+        input_time(clk_run);
+      } else if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
+        engine.SetMode(NORMAL_MODE, true);
     }
 
     if (engine.get_mode() == PITCH_MODE) {
-      if (input_pitch(false)) { // record new pitch
-        bool hold_plz = engine.get_sequence().reset;
-        engine.get_sequence().AdvancePitch();
-        if (!hold_plz && engine.get_sequence().pitch_pos == 0)
-          engine.SetMode(NORMAL_MODE);
-      }
+      const bool check = check_pitch_inputs();
+      DAC::SetGate(check);
+      if (clk_run || check) { // record new pitch
+        input_pitch(clk_run);
+      } else if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
+        engine.SetMode(NORMAL_MODE, true);
     }
 
   }

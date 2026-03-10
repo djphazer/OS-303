@@ -138,7 +138,8 @@ struct Sequence {
 
   // used in write mode
   void AdvancePitch() {
-    ++pitch_pos %= MAX_STEPS;
+    if (reset) reset = false;
+    else ++pitch_pos %= length;
   }
 };
 
@@ -197,8 +198,6 @@ struct Engine {
   //uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
 
   int8_t clk_count = -1;
-
-  uint8_t cv_out_ = 0; // semitone
 
   bool slide_on = false; // flag to keep raised
   bool gate_on = false;
@@ -267,7 +266,6 @@ struct Engine {
       result = get_sequence().Advance();
     }
     if (result) {
-      cv_out_ = get_sequence().get_pitch();
       slide_on = get_slide() || get_sequence().is_tied();
     }
     return result;
@@ -305,16 +303,6 @@ struct Engine {
     pattern[idx].Clear();
   }
 
-  // handle input - semitone from 0-11
-  void NoteOn(int pitch) {
-    cv_out_ = pitch;
-    gate_on = true;
-  }
-  void NoteOff(uint8_t pitch) {
-    if (cv_out_ == pitch)
-      gate_on = false;
-  }
-
   // getters
   SequencerMode get_mode() const { return mode_; }
 
@@ -329,7 +317,7 @@ struct Engine {
     return get_sequence().get_accent() && clk_count < 2;
   }
   uint8_t get_pitch() const {
-    return cv_out_;
+    return get_sequence().get_pitch();
   }
   bool get_slide() const {
     return get_sequence().get_slide();
@@ -363,8 +351,9 @@ struct Engine {
     return get_sequence().BumpLength();
     stale = true;
   }
-  void SetMode(SequencerMode m) {
+  void SetMode(SequencerMode m, bool reset = false) {
     mode_ = m;
+    if (reset) Reset();
   }
   void NudgeOctave(int dir) {
     get_sequence().SetOctave(int(get_sequence().get_octave()) + dir);
