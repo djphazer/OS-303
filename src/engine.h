@@ -314,7 +314,7 @@ struct Engine {
     return ((clk_count < 3) || slide_on) && !resting;
   }
   bool get_accent() const {
-    return get_sequence().get_accent() && clk_count < 2;
+    return get_sequence().get_accent() && (clk_count < 2 || get_sequence().is_tied());
   }
   uint8_t get_pitch() const {
     return get_sequence().get_pitch();
