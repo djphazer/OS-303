@@ -263,9 +263,11 @@ void loop() {
 
   if (inputs[WRITE_MODE].falling()) engine.Save();
 
-  // process all MIDI here
   bool clocked = false;
   static bool midi_clk = false;
+  const bool clk_run = inputs[RUN].held() || midi_clk;
+
+  // process all MIDI here
   while (MIDI.read()) {
     if (MIDI.getType() == midi::MidiType::Clock) {
       clocked = true;
@@ -279,9 +281,10 @@ void loop() {
       DAC::SetGate(false);
       engine.Reset();
     }
+    if (MIDI.getType() == midi::MidiType::ProgramChange) {
+      engine.SetPattern(MIDI.getData1(), !clk_run);
+    }
   }
-
-  const bool clk_run = inputs[RUN].held() || midi_clk;
 
   // DIN sync clock @ 24ppqn
   if (!midi_clk) {
