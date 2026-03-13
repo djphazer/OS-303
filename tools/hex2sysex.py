@@ -41,6 +41,9 @@ def build_sysex(page, page_data):
 
     encoded = pack_7bit(page_data)
     length = len(encoded)
+    checksum = 0
+    for b in page_data:
+        checksum ^= b
 
     msg = [
         SYSEX_START,
@@ -49,7 +52,9 @@ def build_sysex(page, page_data):
         (page >> 7) & 0x7F,
         page & 0x7F,
         (length >> 7) & 0x7F,
-        length & 0x7F
+        length & 0x7F,
+        (checksum >> 4) & 0x0F,
+        checksum & 0x0F
     ]
 
     msg.extend(encoded)

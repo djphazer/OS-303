@@ -39,19 +39,23 @@ static uint8_t uart_rx(void) {
   return UDR1;
 }
 
-static void decode_7bit(uint8_t *in, uint16_t len, uint8_t *out) {
+/* returns checksum of decoded bytes */
+static uint8_t decode_7bit(uint8_t *in, uint16_t len, uint8_t *out) {
   uint16_t i = 0, o = 0;
+  uint8_t check = 0;
 
   while (i < len) {
     uint8_t msb = in[i++];
 
     for (uint8_t b = 0; b < 7 && i < len; b++) {
       uint8_t v = in[i++];
-      out[o++] = v | (((msb >> b) & 1) << 7);
+      out[o] = v | (((msb >> b) & 1) << 7);
+      check ^= out[o++];
       if (o >= PAGE_SIZE)
-        return;
+        return check;
     }
   }
+  return check;
 }
 
 static void flash_write_page(uint16_t page) {
@@ -66,7 +70,7 @@ static void flash_write_page(uint16_t page) {
   boot_spm_busy_wait();
 
   for (uint16_t i = 0; i < PAGE_SIZE; i += 2) {
-    uint16_t w = page_buffer[i] | (page_buffer[i + 1] << 8);
+    uint16_t w = (uint16_t)(page_buffer[i]) | ((uint16_t)(page_buffer[i + 1]) << 8);
     boot_page_fill(addr + i, w);
   }
 
@@ -100,16 +104,25 @@ static void process_sysex(uint8_t *data, uint16_t len) {
 
   uint8_t cmd = data[1];
 
-  if (cmd == 0x01 && len > 7) {
+  if (cmd == 0x01 && len > 9) {
     uint16_t page = ((uint16_t)data[2] << 7) | data[3];
     uint16_t packed_len = ((uint16_t)data[4] << 7) | data[5];
+    uint8_t cksum = (data[6] << 4) | data[7];
 
-    if (packed_len + 6 > len)
+    if (packed_len + 8 > len)
       return;
 
     PORTD = (PORTD & 0x0F) | (count++ << 4); // cycle LEDs while writing
 
-    decode_7bit(&data[5], packed_len, page_buffer);
+    // if they match, cksum will become zero
+    cksum ^= decode_7bit(&data[5], packed_len, page_buffer);
+    if (cksum) {
+      // uh-oh bad checksum, slow blink forever
+      while (1) {
+        PORTD ^= 0xF0;
+        _delay_ms(200);
+      }
+    }
     flash_write_page(page);
   } else if (cmd == 0x02) {
     jump_to_app();
