@@ -9,14 +9,13 @@
 #include <avr/boot.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <avr/wdt.h>
 #include <util/delay.h>
 #include <stdint.h>
 
-#include "sync.h"
-
 #define APP_ADDRESS 0x0000
-#define PAGE_SIZE 256
-#define SYSEX_MAX 400
+#define PAGE_SIZE SPM_PAGESIZE
+#define SYSEX_MAX (PAGE_SIZE*2)
 
 static uint8_t page_buffer[PAGE_SIZE];
 static uint8_t sysex_buf[SYSEX_MAX];
@@ -91,6 +90,7 @@ static void jump_to_app(void) {
   // nah, we'll just dump back into the updater
 }
 
+static uint8_t count = 0;
 static void process_sysex(uint8_t *data, uint16_t len) {
   if (len < 2)
     return;
@@ -100,20 +100,20 @@ static void process_sysex(uint8_t *data, uint16_t len) {
 
   uint8_t cmd = data[1];
 
-  if (cmd == 0x01 && len > 6) {
-    uint16_t page = ((uint16_t)data[2] << 8) | data[3];
-    uint8_t packed_len = data[4];
+  if (cmd == 0x01 && len > 7) {
+    uint16_t page = ((uint16_t)data[2] << 7) | data[3];
+    uint16_t packed_len = ((uint16_t)data[4] << 7) | data[5];
 
-    if (packed_len + 5 > len)
+    if (packed_len + 6 > len)
       return;
 
-    PORTD &= 0x0F; // turn LEDs off while writing
+    PORTD = (PORTD & 0x0F) | (count++ << 4); // cycle LEDs while writing
+
     decode_7bit(&data[5], packed_len, page_buffer);
     flash_write_page(page);
   } else if (cmd == 0x02) {
     jump_to_app();
   }
-  PORTD |= 0xF0; // turn LEDs back on
 }
 
 static void midi_task(void) {
@@ -139,6 +139,7 @@ static void midi_task(void) {
 }
 
 int main(void) {
+  wdt_disable();
   DDRF = 0xFF; // select pin outputs
   DDRB = 0x00; // button inputs
   DDRD |= 0xF0; // direct LED outputs (but also the MIDI serial lines)
@@ -147,11 +148,22 @@ int main(void) {
   // check for button combo to stop the jump
   PORTF = 0x00;
   PORTF = 0x0F;
-  _delay_ms(1);
-  boot_sync_flag = 1;
+  _delay_ms(40);
   if (PINB & (1 << 1)) { // hold WRITE/NEXT/TAP to stay in bootloader
     // indicate bootloader mode: TIME, PITCH, FUNCTION, and A# key LEDS, all on
     PORTD |= 0xF0;
+    // flash each LED twice for sanity check
+    for (uint8_t i = 0; i < 4; ++i) {
+      _delay_ms(100);
+      PORTD ^= (1 << (4 + i));
+      _delay_ms(100);
+      PORTD ^= (1 << (4 + i));
+      _delay_ms(100);
+      PORTD ^= (1 << (4 + i));
+      _delay_ms(100);
+      PORTD ^= (1 << (4 + i));
+    }
+
     while (1) {
       midi_task();
     }

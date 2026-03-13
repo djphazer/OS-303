@@ -40,14 +40,16 @@ def pack_7bit(data):
 def build_sysex(page, page_data):
 
     encoded = pack_7bit(page_data)
+    length = len(encoded)
 
     msg = [
         SYSEX_START,
         MFR_ID,
         CMD_WRITE_PAGE,
-        (page >> 8) & 0x7F,
+        (page >> 7) & 0x7F,
         page & 0x7F,
-        len(encoded) & 0x7F
+        (length >> 7) & 0x7F,
+        length & 0x7F
     ]
 
     msg.extend(encoded)
