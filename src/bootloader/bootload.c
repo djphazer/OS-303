@@ -115,7 +115,7 @@ static void process_sysex(uint8_t *data, uint16_t len) {
     PORTD = (PORTD & 0x0F) | (count++ << 4); // cycle LEDs while writing
 
     // if they match, cksum will become zero
-    cksum ^= decode_7bit(&data[5], packed_len, page_buffer);
+    cksum ^= decode_7bit(&data[8], packed_len, page_buffer);
     if (cksum) {
       // uh-oh bad checksum, slow blink forever
       while (1) {
