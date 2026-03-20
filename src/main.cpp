@@ -8,6 +8,7 @@
 #include "drivers.h"
 #include "engine.h"
 #include "MIDI.h"
+#include "bootloader/sync.h"
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
@@ -126,6 +127,14 @@ void PewPewPew() {
     PewPew(12 - note, true); // accent on
   }
 }
+
+extern "C" {
+  static void jumptoboot(void) {
+    // call bootloader to test
+    ((int (*)(void))0x1F000)();
+  }
+}
+
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
@@ -138,6 +147,12 @@ void setup() {
   }
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], HIGH);
+  }
+
+  PollInputs(inputs);
+  boot_sync_flag = inputs[TAP_NEXT].held();
+  if (boot_sync_flag) {
+    jumptoboot();
   }
 
   Serial.begin(9600);
