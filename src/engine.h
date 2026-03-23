@@ -13,7 +13,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
-static constexpr int MAX_STEPS = 32;
+static constexpr int MAX_STEPS = 64;
 static constexpr int NUM_PATTERNS = 16;
 
 enum SequencerMode {
@@ -33,11 +33,11 @@ static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
 static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
 
 struct Sequence {
-  // --- sequence data - 64 bytes
+  // --- sequence data - 128 bytes
   // for DAC pitch, 0 is a low G#; 4 is lowest C; and middle C is 28
   // We're gonna store pitch as if the lowest C is 0, so it needs +4 when sent to DAC
   uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
-  uint8_t time_data[MAX_STEPS/2];  // 0=rest, 1=note, 2=tie, 3=triplets?
+  uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=??
   // time is stored as nibbles, so there's actually a lot of padding
   uint8_t reserved[MAX_STEPS/2 - 1];
   uint8_t length = 16;

@@ -451,11 +451,18 @@ void loop() {
 
       if (write_mode) {
         // show step length on LEDs
-        Leds::Set(OutputIndex((engine.get_length() - 1) & 0x7), true);
-        Leds::Set(CSHARP_KEY_LED, true);
-        Leds::Set(DSHARP_KEY_LED, (engine.get_length() - 1) >> 3);
-        Leds::Set(FSHARP_KEY_LED, (engine.get_length() - 1) >> 4);
-        Leds::Set(GSHARP_KEY_LED, (engine.get_length() - 1) >= 24);
+        const uint8_t len = engine.get_length() - 1;
+        Leds::Set(OutputIndex(len & 0x7), true);
+        if (len < 32) {
+          Leds::Set(OutputIndex(CSHARP_KEY_LED + (len >> 3)), true);
+        } else {
+          Leds::Set(CSHARP_KEY_LED, true);
+          Leds::Set(DSHARP_KEY_LED, true);
+          Leds::Set(FSHARP_KEY_LED, true);
+          Leds::Set(GSHARP_KEY_LED, true);
+          Leds::Set(ASHARP_KEY_LED, true);
+          Leds::Set(OutputIndex(CSHARP_KEY_LED + ((len >> 3) & 0x3)), false);
+        }
 
         // tap in number of steps
         if (inputs[DOWN_KEY].rising()) {
