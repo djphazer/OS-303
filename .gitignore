@@ -4,3 +4,4 @@ compile_commands.json
 *.hex
 *.syx
 __pycache__
+.DS_Store

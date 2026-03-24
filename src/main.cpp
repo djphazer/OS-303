@@ -31,6 +31,9 @@ static uint8_t tracknum = 0;
 static bool step_counter = false;
 static bool midi_clk = false;
 
+static elapsedMillis pattern_cleared_flash_timer;
+static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
+
 // this is where the magic happens
 static Engine engine;
 
@@ -252,6 +255,9 @@ void setup() {
 }
 
 void PrintPitch(const uint8_t pitch, const bool acc, const bool slide) {
+  // empty step: no LEDs lit — pattern is blank here
+  if (pitch == Sequence::PITCH_EMPTY) return;
+
   Leds::Set(pitch_leds[pitch % 12], true);
 
   Leds::Set(ACCENT_KEY_LED, acc);
@@ -318,9 +324,10 @@ void ProcessDefault(const bool &write_mode, const bool &clear_mod,
     for (uint8_t i = 0; i < 8; ++i) {
       if (inputs[i].rising()) {
         const uint8_t patsel = (engine.get_patsel() >> 3) * 8 + i;
-        if (clear_mod)
+        if (clear_mod) {
           engine.ClearPattern(patsel);
-        else
+          pattern_cleared_flash_timer = 0;
+        } else
           engine.SetPattern(patsel, !clk_run);
       }
     }
@@ -331,12 +338,12 @@ void ProcessDefault(const bool &write_mode, const bool &clear_mod,
     break;
   }
 
-  // no modifier - show current mode
-  Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE);
-  Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE);
-  Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE);
-  // hmmm
-  //Leds::Set(ASHARP_KEY_LED, inputs[ASHARP_KEY].held() || (engine.get_pitch() % 12 == 10));
+  // no modifier - show current mode; flash for pattern clear
+  const bool pat_clr_flash = pattern_cleared_flash_timer < PATTERN_CLEARED_FLASH_MS;
+  Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE || pat_clr_flash);
+  Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE || pat_clr_flash);
+  Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE && !pat_clr_flash);
+  if (pat_clr_flash) Leds::Set(ASHARP_KEY_LED, true);
 }
 void ProcessPitchMod() {
   Leds::Set(PITCH_MODE_LED, clk_count & (1 << 2));
@@ -485,8 +492,21 @@ void loop() {
   if (inputs[TIME_KEY].rising() && write_mode) engine.SetMode(TIME_MODE, !clk_run);
   if (inputs[PITCH_KEY].rising() && write_mode) engine.SetMode(PITCH_MODE, !clk_run);
   if (inputs[FUNCTION_KEY].rising()) engine.SetMode(NORMAL_MODE, !clk_run);
-
-  if (inputs[CLEAR_KEY].rising()) engine.Reset();
+ 
+  if (inputs[CLEAR_KEY].rising()) {
+    uint8_t clear_pat = 0xFF;
+    for (uint8_t i = 0; i < 8; ++i) {
+      if (inputs[i].held()) {
+        clear_pat = uint8_t((engine.get_patsel() >> 3) * 8 + i);
+        break;
+      }
+    }
+    if (clear_pat != 0xFF) {
+      engine.ClearPattern(clear_pat);
+      pattern_cleared_flash_timer = 0;
+    } else
+      engine.Reset();
+  }
 
   if (inputs[FUNCTION_KEY].falling()) step_counter = false;
 
@@ -496,20 +516,17 @@ void loop() {
 
   if (clocked && clk_run) {
     engine.Clock();
-
-    // hold CLEAR + BACK in write mode to generate random stuff
-    if (!track_mode && write_mode && clear_mod && inputs[BACK_KEY].held()) {
-      // TODO: * GENERATE! *
-      engine.Generate();
-    }
   }
 
   if (!clk_run) {
+    // handle TAP button advance for step editing when stopped
+    // With clock running, TAP does nothing - Clock() drives advance
     if (inputs[TAP_NEXT].rising()) {
       DAC::SetGate(engine.Advance());
     }
     if (inputs[TAP_NEXT].falling()) {
       DAC::SetGate(false);
+      // TODO: wrap around or not
       if (engine.get_time_pos() >= engine.get_length() - 1)
         engine.SetMode(NORMAL_MODE, true);
     }

@@ -47,18 +47,24 @@ struct Sequence {
   // --- functions
   // 6-bit pitch, 0 == low C
   const uint8_t get_pitch() const {
+    if (step_is_empty()) return (OCTAVE_ZERO * 12); // silent default, gate will be off
     return pitch[pitch_pos] & 0x3f;
   }
   const uint8_t get_octave() const {
+    if (step_is_empty()) return OCTAVE_ZERO;
     return get_pitch() / 12;
   }
+  // semitone index (0–11) for LED display. Returns 0xFF if step is unwritten.
   const uint8_t get_semitone() const {
+    if (step_is_empty()) return PITCH_EMPTY;
     return get_pitch() % 12;
   }
   const uint8_t get_accent() const {
+    if (step_is_empty()) return 0;
     return pitch[pitch_pos] & (1<<6);
   }
   const bool get_slide(uint8_t step) const {
+    if (pitch_is_empty(step)) return false;
     return pitch[step] & (1<<7);
   }
   const bool get_slide() const {
@@ -83,22 +89,26 @@ struct Sequence {
     pitch[pitch_pos] = (p & 0x3f) | (flags & 0xc0);
   }
   void SetPitchSemitone(uint8_t p) {
+    init_if_empty(); 
     pitch[pitch_pos] =
         ((get_octave() * 12 + p) & 0x3f) | (pitch[pitch_pos] & 0xc0);
   }
   void SetLength(uint8_t len) { length = constrain(len, 1, MAX_STEPS); }
   void SetOctave(int oct) {
+    init_if_empty();
     CONSTRAIN(oct, 0, 3);
     pitch[pitch_pos] =
         ((uint8_t)oct * 12 + get_semitone()) | (pitch[pitch_pos] & 0xc0);
   }
 
-  void ToggleSlide() { pitch[pitch_pos] ^= (1 << 7); }
-  void ToggleAccent() { pitch[pitch_pos] ^= (1 << 6); }
+  void ToggleSlide() { init_if_empty(); pitch[pitch_pos] ^= (1 << 7); }
+  void ToggleAccent() { init_if_empty(); pitch[pitch_pos] ^= (1 << 6); }
   void SetSlide(bool on) {
+    init_if_empty();
     pitch[pitch_pos] = (pitch[pitch_pos] & ~(1 << 7)) | (on << 7);
   }
   void SetAccent(bool on) {
+    init_if_empty();
     pitch[pitch_pos] = (pitch[pitch_pos] & ~(1 << 6)) | (on << 6);
   }
 
@@ -119,10 +129,20 @@ struct Sequence {
     time_pos = 0;
     reset = true;
   }
+  static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
+  static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
+
+  bool pitch_is_empty(uint8_t pos) const { return pitch[pos] == PITCH_EMPTY; }
+  bool step_is_empty() const { return pitch_is_empty(pitch_pos); }
+
+  void init_if_empty() {
+    if (step_is_empty()) pitch[pitch_pos] = PITCH_DEFAULT;
+  }
+
   void Clear() {
     for (uint8_t i = 0; i < MAX_STEPS; ++i) {
-      pitch[i] = 0;
-      time_data[i>>1] = 0;
+      pitch[i] = PITCH_DEFAULT;
+      time_data[i>>1] = 0; // all rests
     }
     length = 8;
   }
@@ -151,6 +171,7 @@ struct Sequence {
 // --- EEPROM data layout
 static constexpr int SETTINGS_SIZE = 128;
 static constexpr int PATTERN_SIZE = MAX_STEPS * 2;
+
 const char* const sig_pew = "PewPewPew!!!";
 
 extern EEPROMClass storage;
@@ -274,6 +295,7 @@ struct Engine {
     if (result) {
       slide_on = get_slide() || get_sequence().is_tied();
     }
+    resting = !result;
     return result;
   }
 
@@ -285,7 +307,6 @@ struct Engine {
     if (clk_count == 0) { // sixteenth note advance
       send_note = Advance();
       //delay_timer = 0;
-      resting = !send_note;
     }
 
     return send_note;
@@ -307,6 +328,11 @@ struct Engine {
 
   void ClearPattern(uint8_t idx) {
     pattern[idx].Clear();
+    stale = true;
+    if (idx == p_select) {
+      Reset();
+      mode_ = NORMAL_MODE;
+    }
   }
 
   // getters
@@ -314,6 +340,7 @@ struct Engine {
 
   Sequence &get_sequence() { return pattern[p_select]; }
   const Sequence &get_sequence() const { return pattern[p_select]; }
+  const Sequence &get_pattern(uint8_t idx) const { return pattern[idx & 0xf]; }
 
   bool get_gate() const {
     //delay_timer > 0 && 
@@ -322,8 +349,18 @@ struct Engine {
   bool get_accent() const {
     return !resting && get_sequence().get_accent() && (clk_count < 2 || get_sequence().is_tied());
   }
+  uint8_t get_semitone() const {
+    return get_sequence().get_semitone();
+  }
   uint8_t get_pitch() const {
     return get_sequence().get_pitch();
+  }
+  // MIDI note number: OCTAVE_DOWN C = 36 (C2), OCTAVE_ZERO C = 48 (C3)
+  uint8_t get_midi_note() const {
+    if (get_sequence().step_is_empty()) return 48;
+    const uint8_t semitone = get_sequence().get_semitone();
+    const uint8_t oct = get_sequence().get_octave();
+    return 36 + semitone + (oct * 12);
   }
   bool get_slide() const {
     return get_sequence().get_slide();
@@ -354,8 +391,8 @@ struct Engine {
     stale = true;
   }
   bool BumpLength() {
-    return get_sequence().BumpLength();
     stale = true;
+    return get_sequence().BumpLength();
   }
   void SetMode(SequencerMode m, bool reset = false) {
     mode_ = m;

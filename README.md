@@ -11,7 +11,10 @@ A very basic sequencer implementation has been hacked together on top of the cor
 A basic bootloader enables updates via MIDI. Hold the "Write/Next/Tap" button on startup to enter the bootloader; 4 LEDs will light up solid - PITCH, TIME, FUNCTION, and A#. Use a program like Sysex Librarian or MIDI-OX to send the "update.syx" file from a PC, taking care to throttle the send speed... (if it fails, you might need to send it slower!)
 
 ## Development
-Building the firmware primarily uses the [PlatformIO](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html) toolchain. This automatically produces a combined app+bootloader HEX file and a converted SYX file for app update via MIDI. You might have to run `pip install intelhex` once locally.
+Building the firmware primarily uses the [PlatformIO](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html) toolchain. Run `pio run` from the repo root; the app build runs `tools/makesyx.py` and writes `app-update.syx` for the MIDI bootloader. You might have to run `pip install intelhex` once locally.
+
+### Arduino IDE (optional)
+Install [Arduino 1.8.x](https://www.arduino.cc/en/software) and [Teensyduino](https://www.pjrc.com/teensy/td_download.html) (adds Teensy boards). Open `src/src.ino`, set **Tools → Board → Teensy++ 2.0** and CPU speed 16 MHz, then compile or upload. The sketch uses `main.cpp` in the same folder. For a SysEx file matching PlatformIO output, use `pio run -e app` and deploy `app-update.syx`.
 
 If you fork the repo and enable GitHub Actions workflows, the server will build it for you when code changes are pushed. Anyone logged in to GH can [download the artifact files](https://github.com/djphazer/OS-303/actions/workflows/firmware.yml).
 
