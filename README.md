@@ -8,7 +8,7 @@ It should run on any AT90USB1286 microcontroller board with compatible pinouts, 
 A very basic sequencer implementation has been hacked together on top of the core drivers, with patterns saved to EEPROM. It is not a complete imitation of the original (yet, WIP) but serves as a good starting point and PoC. With basic familiar functions in place, there is an opportunity to remake the 303 sequencer as you see fit...
 
 ## Update via MIDI SysEx
-A basic bootloader enables updates via MIDI. Hold the "Write/Next/Tap" button on startup to enter the bootloader; 4 LEDs will light up solid - PITCH, TIME, FUNCTION, and A#. Use a program like [Bome Send SX](https://www.bome.com/products/sendsx) or MIDI-OX to send the "update.syx" file from a PC, taking care to throttle the send speed... (if it fails, you might need to send it slower!)
+A basic bootloader enables updates via MIDI. Hold the "Write/Next/Tap" button on startup to enter the bootloader; 4 LEDs will light up solid - PITCH, TIME, FUNCTION, and A#. Use a program like Sysex Librarian or MIDI-OX to send the "update.syx" file from a PC, taking care to throttle the send speed... (if it fails, you might need to send it slower!)
 
 ## Development
 Building the firmware primarily uses the [PlatformIO](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html) toolchain. This automatically produces a combined app+bootloader HEX file and a converted SYX file for app update via MIDI. You might have to run `pip install intelhex` once locally.
