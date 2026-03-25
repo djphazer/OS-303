@@ -27,7 +27,7 @@ namespace DAC {
     PORTE = 0; // disable latch
     // set gate and accent pins, enable latch/slide
     PORTE = (gate_ << 1) | (accent_ << 6) | 0x1;
-
+    delayMicroseconds(10); // make sure the latch stays on long enough
     if (!slide_) // turn slide bit back off
       PORTE ^= 0x1;
 
@@ -117,42 +117,21 @@ namespace Leds {
 } // namespace Leds
 
 void PollInputs(PinState *inputs) {
-  //PORTF = 0x00;
+  // Raise all select pins and drive all LED pins LOW before reading.
+  // This clears any residual LED drive state from the previous Leds::Send() call,
+  // which would otherwise cause matrix crosstalk and ghost button reads.
   PORTF = 0x0f;
   delayMicroseconds(SWITCH_DELAY);
-  //PORTF = 0xff;
-
-  /*
-  digitalWriteFast(select_pin[0], HIGH);
-  digitalWriteFast(select_pin[1], HIGH);
-  digitalWriteFast(select_pin[2], HIGH);
-  digitalWriteFast(select_pin[3], HIGH);
-  // all LEDs
-  digitalWriteFast(PG0_PIN, HIGH);
-  digitalWriteFast(PG1_PIN, HIGH);
-  digitalWriteFast(PG2_PIN, HIGH);
-  digitalWriteFast(PG3_PIN, HIGH);
-  */
 
   // read PA and PB pins while select pins are high
   for (uint8_t i = 0; i < 4; ++i) {
     inputs[EXTRA_PIN_OFFSET + i].push(digitalReadFast(status_pins[i])); // PAx
-    // not sure if these are actually used...
-    //inputs[EXTRA_PIN_OFFSET + i+4].push(digitalReadFast(button_pins[i])); // PBx
   }
-
-  //PORTF = 0x0f;
-
-  /*
-  digitalWriteFast(PG0_PIN, LOW);
-  digitalWriteFast(PG1_PIN, LOW);
-  digitalWriteFast(PG2_PIN, LOW);
-  digitalWriteFast(PG3_PIN, LOW);
-  */
 
   // open each switched channel with select pin
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], LOW); // PHx
+    delayMicroseconds(SWITCH_DELAY);
     for (uint8_t j = 0; j < 4; ++j) {
       // read pins
       inputs[ 0 + i*4 + j].push(digitalReadFast(button_pins[j])); // PBx
