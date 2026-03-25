@@ -257,7 +257,7 @@ void setup() {
 
 void PrintPitch(const uint8_t pitch, const bool acc, const bool slide) {
   // empty step: no LEDs lit — pattern is blank here
-  if (pitch == Sequence::PITCH_EMPTY) return;
+  if (pitch == PITCH_EMPTY) return;
 
   Leds::Set(pitch_leds[pitch % 12], true);
 
@@ -523,6 +523,8 @@ void loop() {
     // With clock running, TAP does nothing - Clock() drives advance
     if (inputs[TAP_NEXT].rising()) {
       DAC::SetGate(engine.Advance());
+      DAC::SetAccent(engine.get_accent());
+      DAC::SetSlide(engine.get_slide());
     }
     if (inputs[TAP_NEXT].falling()) {
       DAC::SetGate(false);
@@ -556,16 +558,13 @@ void loop() {
 
   if (clk_run) {
     // send sequence step
-    DAC::SetPitch(engine.get_pitch() + 4 + transpose);
     DAC::SetSlide(engine.get_slide());
     DAC::SetAccent(engine.get_accent());
     DAC::SetGate(engine.get_gate());
-  } else {
-    // not run mode - send notes from keys
-    DAC::SetPitch(engine.get_pitch() + 4 + transpose);
-    DAC::SetSlide(inputs[SLIDE_KEY].held());
-    DAC::SetAccent(inputs[ACCENT_KEY].held());
   }
+  // pitch always comes from the engine
+  // sometimes right after assigning a new pitch to current step while stopped
+  DAC::SetPitch(engine.get_pitch() + 4 + transpose);
 
   // catch falling edge of RUN
   if (inputs[RUN].falling() && !midi_clk) {

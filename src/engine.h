@@ -29,6 +29,9 @@ enum OctaveState {
   OCTAVE_DOUBLE_UP,
 };
 
+static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
+static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
+
 struct Sequence {
   // --- sequence data - 64 bytes
   // for DAC pitch, 0 is a low G#; 4 is lowest C; and middle C is 28
@@ -47,7 +50,7 @@ struct Sequence {
   // --- functions
   // 6-bit pitch, 0 == low C
   const uint8_t get_pitch() const {
-    if (step_is_empty()) return (OCTAVE_ZERO * 12); // silent default, gate will be off
+    if (step_is_empty()) return PITCH_DEFAULT; // silent default, gate will be off
     return pitch[pitch_pos] & 0x3f;
   }
   const uint8_t get_octave() const {
@@ -69,6 +72,9 @@ struct Sequence {
   }
   const bool get_slide() const {
     return get_slide(pitch_pos);
+  }
+  const bool is_sliding() const {
+    return (pitch_pos < length) && get_slide(pitch_pos+1);
   }
   const bool is_tied() const {
     return (time_pos < length) && (time(time_pos+1) == 2);
@@ -129,8 +135,6 @@ struct Sequence {
     time_pos = 0;
     reset = true;
   }
-  static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
-  static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
 
   bool pitch_is_empty(uint8_t pos) const { return pitch[pos] == PITCH_EMPTY; }
   bool step_is_empty() const { return pitch_is_empty(pitch_pos); }
@@ -225,7 +229,7 @@ struct Engine {
 
   int8_t clk_count = -1;
 
-  bool slide_on = false; // flag to keep raised
+  bool slide_gate = false; // flag to keep the gate raised before a slid step
   bool stale = false;
   bool resting = false; // hey shutup
 
@@ -293,7 +297,7 @@ struct Engine {
       result = get_sequence().Advance();
     }
     if (result) {
-      slide_on = get_slide() || get_sequence().is_tied();
+       slide_gate = get_slide() || get_sequence().is_tied() || get_sequence().is_sliding();
     }
     resting = !result;
     return result;
@@ -315,7 +319,7 @@ struct Engine {
   void Reset() {
     get_sequence().Reset();
     clk_count = -1;
-    slide_on = false;
+    slide_gate = false;
     resting = true;
   }
 
@@ -343,8 +347,10 @@ struct Engine {
   const Sequence &get_pattern(uint8_t idx) const { return pattern[idx & 0xf]; }
 
   bool get_gate() const {
+    // TODO: fancy stuff for shuffle, ratchets, etc.
+    // also for emulated jitter
     //delay_timer > 0 && 
-    return ((clk_count < 3) || slide_on) && !resting;
+    return ((clk_count < 3) || slide_gate) && !resting;
   }
   bool get_accent() const {
     return !resting && get_sequence().get_accent() && (clk_count < 2 || get_sequence().is_tied());
