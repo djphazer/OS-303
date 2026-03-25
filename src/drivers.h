@@ -44,6 +44,7 @@ namespace DAC {
   }
 
   inline void SetPitch(uint8_t p) {
+    if (p > 63) gate_ = false;
     pitch_ = p;
   }
   inline void SetGate(bool on) {

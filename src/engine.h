@@ -395,8 +395,8 @@ struct Engine {
     return get_sequence().BumpLength();
   }
   void SetMode(SequencerMode m, bool reset = false) {
+    if (reset && m != mode_) Reset();
     mode_ = m;
-    if (reset) Reset();
   }
   void NudgeOctave(int dir) {
     get_sequence().SetOctave(int(get_sequence().get_octave()) + dir);

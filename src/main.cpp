@@ -30,6 +30,7 @@ static PinState inputs[INPUT_COUNT];
 static uint8_t tracknum = 0;
 static bool step_counter = false;
 static bool midi_clk = false;
+static bool wrap_edit = false;
 
 static elapsedMillis pattern_cleared_flash_timer;
 static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
@@ -290,6 +291,8 @@ void ProcessEdit(const bool &write_mode) {
   case NORMAL_MODE:
     break;
   }
+  if (inputs[BACK_KEY].rising())
+    engine.Reset();
 }
 void ProcessDefault(const bool &write_mode, const bool &clear_mod,
                const bool &clk_run) {
@@ -373,6 +376,14 @@ void loop() {
   //if ((ticks & 0x03) == 0)
   PollInputs(inputs);
 
+#if DEBUG
+  if (Serial.available() && Serial.read()) {
+    for (uint8_t i = 0; i < INPUT_COUNT/2; ++i) {
+      Serial.printf("Input #%2u = %x   |  Input #%2u = %x\n", i, inputs[i].state, i + INPUT_COUNT/2, inputs[i + INPUT_COUNT/2].state);
+    }
+  }
+#endif
+
   const bool track_mode = inputs[TRACK_SEL].held();
   const bool write_mode = inputs[WRITE_MODE].held();
   const bool clear_mod = inputs[CLEAR_KEY].held();
@@ -419,20 +430,10 @@ void loop() {
     engine.Save();
   }
 
-#if DEBUG
   if (inputs[RUN].rising()) {
-    Serial.println("CLOCK RUN STARTED");
+    //Serial.println("CLOCK RUN STARTED");
+    engine.Reset();
   }
-  if (inputs[RUN].falling()) {
-    Serial.println("CLOCK STOPPED");
-  }
-
-  if (Serial.available() && Serial.read()) {
-    for (uint8_t i = 0; i < INPUT_COUNT/2; ++i) {
-      Serial.printf("Input #%2u = %x   |  Input #%2u = %x\n", i, inputs[i].state, i + INPUT_COUNT/2, inputs[i + INPUT_COUNT/2].state);
-    }
-  }
-#endif
 
   // -=-=- Process inputs and set LEDs -=-=-
 
@@ -504,8 +505,7 @@ void loop() {
     if (clear_pat != 0xFF) {
       engine.ClearPattern(clear_pat);
       pattern_cleared_flash_timer = 0;
-    } else
-      engine.Reset();
+    }
   }
 
   if (inputs[FUNCTION_KEY].falling()) step_counter = false;
@@ -526,8 +526,7 @@ void loop() {
     }
     if (inputs[TAP_NEXT].falling()) {
       DAC::SetGate(false);
-      // TODO: wrap around or not
-      if (engine.get_time_pos() >= engine.get_length() - 1)
+      if (!wrap_edit && engine.get_time_pos() >= engine.get_length() - 1)
         engine.SetMode(NORMAL_MODE, true);
     }
   }
@@ -570,6 +569,7 @@ void loop() {
 
   // catch falling edge of RUN
   if (inputs[RUN].falling() && !midi_clk) {
+    //Serial.println("CLOCK STOPPED");
     DAC::SetGate(false);
     engine.Reset();
   }
