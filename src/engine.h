@@ -353,7 +353,7 @@ struct Engine {
     return ((clk_count < 3) || slide_gate) && !resting;
   }
   bool get_accent() const {
-    return !resting && get_sequence().get_accent() && (clk_count < 2 || get_sequence().is_tied());
+    return !resting && get_sequence().get_accent();
   }
   uint8_t get_semitone() const {
     return get_sequence().get_semitone();
