@@ -24,6 +24,7 @@ static uint8_t ticks = 0;
 static uint8_t clk_count = 0;
 static uint8_t menu_state = MENU_NONE;
 static uint8_t transpose = 12; // range is 0 to 47
+static uint8_t transpose_next = 12;
 
 static PinState inputs[INPUT_COUNT];
 
@@ -31,6 +32,7 @@ static uint8_t tracknum = 0;
 static bool step_counter = false;
 static bool midi_clk = false;
 static bool wrap_edit = false;
+static bool clk_run = false;
 
 static bool dac_stale = false;
 static elapsedMicros dac_timer;
@@ -296,8 +298,7 @@ void ProcessEdit(const bool &write_mode) {
   if (inputs[BACK_KEY].rising())
     engine.Reset();
 }
-void ProcessDefault(const bool &write_mode, const bool &clear_mod,
-               const bool &clk_run) {
+void ProcessDefault(const bool &write_mode, const bool &clear_mod) {
   switch (engine.get_mode()) {
   case PITCH_MODE:
     PrintPitch(engine.get_pitch(), engine.get_accent(), engine.get_slide());
@@ -351,7 +352,8 @@ void ProcessDefault(const bool &write_mode, const bool &clear_mod,
   if (pat_clr_flash) Leds::Set(ASHARP_KEY_LED, true);
 }
 void SetTranspose(const uint8_t tr) {
-  transpose = constrain(tr, 0, 47);
+  transpose_next = constrain(tr, 0, 47);
+  if (!clk_run) transpose = transpose_next;
 }
 void ProcessPitchMod() {
   Leds::Set(PITCH_MODE_LED, clk_count & (1 << 2));
@@ -400,7 +402,8 @@ void loop() {
   const bool pitch_mod = inputs[PITCH_KEY].held();
   const bool time_mod = inputs[TIME_KEY].held();
 
-  const bool clk_run = inputs[RUN].held() || midi_clk;
+  // Update global clock state
+  clk_run = inputs[RUN].held() || midi_clk;
 
   bool clocked = false;
 
@@ -486,7 +489,7 @@ void loop() {
         menu_state = MENU_CONFIG;
 
     } else {
-      ProcessDefault(write_mode, clear_mod, clk_run);
+      ProcessDefault(write_mode, clear_mod);
     }
   }
 
@@ -528,7 +531,10 @@ void loop() {
   }
 
   if (clocked && clk_run) {
-    engine.Clock();
+    if (engine.Clock() && engine.get_time_pos() == 0) {
+      // pattern-synced changes here
+      transpose = transpose_next;
+    }
     dac_stale = true;
   }
 

@@ -303,17 +303,16 @@ struct Engine {
     return result;
   }
 
-  // returns true for new pitch step
+  // returns true on step advance (clock divide by 6)
   bool Clock() {
-    bool send_note = false;
     ++clk_count %= 6;
 
     if (clk_count == 0) { // sixteenth note advance
-      send_note = Advance();
-      //delay_timer = 0;
+      Advance();
+      return true;
     }
 
-    return send_note;
+    return false;
   }
 
   void Reset() {
