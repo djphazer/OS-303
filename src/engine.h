@@ -155,7 +155,7 @@ struct Sequence {
   bool Advance() {
     if (reset) {
       reset = false;
-      return true;
+      return time(0);
     }
     ++time_pos %= length;
     if (time_pos == 0)

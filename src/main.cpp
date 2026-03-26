@@ -32,6 +32,8 @@ static bool step_counter = false;
 static bool midi_clk = false;
 static bool wrap_edit = false;
 
+static bool dac_stale = false;
+static elapsedMicros dac_timer;
 static elapsedMillis pattern_cleared_flash_timer;
 static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
 
@@ -348,6 +350,9 @@ void ProcessDefault(const bool &write_mode, const bool &clear_mod,
   Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE && !pat_clr_flash);
   if (pat_clr_flash) Leds::Set(ASHARP_KEY_LED, true);
 }
+void SetTranspose(const uint8_t tr) {
+  transpose = constrain(tr, 0, 47);
+}
 void ProcessPitchMod() {
   Leds::Set(PITCH_MODE_LED, clk_count & (1 << 2));
   PrintPitch(transpose, false, false);
@@ -357,17 +362,17 @@ void ProcessPitchMod() {
   // check pitch keys to set new root note
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (inputs[pitched_keys[i]].rising()) {
-      transpose = (transpose / 12) * 12 + i;
+      SetTranspose((transpose / 12) * 12 + i);
     }
   }
   // check octave keys to jump by 12
   if (inputs[DOWN_KEY].rising()) {
     uint8_t oct = constrain(int(transpose) / 12 - 1, 0, 3);
-    transpose = (transpose % 12) + oct * 12;
+    SetTranspose((transpose % 12) + oct * 12);
   }
   if (inputs[UP_KEY].rising()) {
     uint8_t oct = constrain(int(transpose) / 12 + 1, 0, 3);
-    transpose = (transpose % 12) + oct * 12;
+    SetTranspose((transpose % 12) + oct * 12);
   }
   // TODO: other pitch effects?
 }
@@ -375,6 +380,7 @@ void loop() {
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
   PollInputs(inputs);
+  engine.Tick(menu_state);
 
 #if DEBUG
   if (Serial.available() && Serial.read()) {
@@ -523,6 +529,7 @@ void loop() {
 
   if (clocked && clk_run) {
     engine.Clock();
+    dac_stale = true;
   }
 
   if (!clk_run) {
@@ -582,7 +589,11 @@ void loop() {
 
   ++ticks;
 
-  // send DAC every other tick...
-  //if (0 == (ticks & 0x1))
-  DAC::Send();
+  // simulate original interrupt timing for DAC update,
+  // which will naturally beat against the clock pulses and hopefully evoke the same kind of jitter
+  if (dac_timer > 1800 && (dac_stale || !clk_run)) {
+    DAC::Send();
+    dac_timer = 0;
+    dac_stale = 0;
+  }
 }
