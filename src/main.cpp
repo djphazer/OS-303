@@ -1,7 +1,9 @@
 // Copyright (c) 2026, Nicholas J. Michalek
 //
 
+#ifndef DEBUG
 #define DEBUG 0
+#endif
 
 #include <Arduino.h>
 #include "pins.h"
@@ -170,7 +172,9 @@ void setup() {
     jumptoboot();
   }
 
+#if DEBUG
   Serial.begin(9600);
+#endif
 
   const OutputIndex loadingbar[] = {
     PITCH_MODE_LED, FUNCTION_MODE_LED,
