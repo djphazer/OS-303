@@ -265,6 +265,13 @@ void setup() {
   engine.Load();
 }
 
+// --- LED helpers ---
+void PrintPosition(const uint8_t pos) {
+  // chasing light for pattern step
+  Leds::Set(OutputIndex(pos & 0x7), true);
+  Leds::Set(OutputIndex(CSHARP_KEY_LED + ((pos >> 3) & 0x3)), true);
+  Leds::Set(ASHARP_KEY_LED, pos >> 5);
+}
 void PrintPitch(const uint8_t pitch, const bool acc, const bool slide) {
   // empty step: no LEDs lit — pattern is blank here
   if (pitch == PITCH_EMPTY) return;
@@ -280,8 +287,13 @@ void PrintTime() {
   Leds::Set(DOWN_KEY_LED, engine.get_time() == 1);
   Leds::Set(UP_KEY_LED, engine.get_time() == 2);
   Leds::Set(ACCENT_KEY_LED, engine.get_time() == 0);
+  // TODO: step-lock bit or something...
+  //Leds::Set(SLIDE_KEY_LED, engine.get_time() == 3);
+
+  PrintPosition(engine.get_time_pos());
 }
 
+// --- UI context/mode helpers ---
 void ProcessEdit(const bool &write_mode) {
   switch (engine.get_mode()) {
   case PITCH_MODE: {
@@ -328,9 +340,7 @@ void ProcessDefault(const bool &write_mode, const bool &clear_mod) {
     Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3));   // B
 
     if (clk_run && write_mode) {
-      // chasing light for pattern step
-      Leds::Set(OutputIndex(engine.get_time_pos() & 0x7), true);
-      Leds::Set(OutputIndex(CSHARP_KEY_LED + (engine.get_time_pos() >> 3)), true);
+      PrintPosition(engine.get_time_pos());
     }
     // Inputs for Pattern Select
     for (uint8_t i = 0; i < 8; ++i) {
@@ -384,6 +394,9 @@ void ProcessPitchMod() {
   }
   // TODO: other pitch effects?
 }
+
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 void loop() {
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
@@ -466,18 +479,7 @@ void loop() {
 
       if (write_mode) {
         // show step length on LEDs
-        const uint8_t len = engine.get_length() - 1;
-        Leds::Set(OutputIndex(len & 0x7), true);
-        if (len < 32) {
-          Leds::Set(OutputIndex(CSHARP_KEY_LED + (len >> 3)), true);
-        } else {
-          Leds::Set(CSHARP_KEY_LED, true);
-          Leds::Set(DSHARP_KEY_LED, true);
-          Leds::Set(FSHARP_KEY_LED, true);
-          Leds::Set(GSHARP_KEY_LED, true);
-          Leds::Set(ASHARP_KEY_LED, true);
-          Leds::Set(OutputIndex(CSHARP_KEY_LED + ((len >> 3) & 0x3)), false);
-        }
+        PrintPosition(engine.get_length() - 1);
 
         // tap in number of steps
         if (inputs[DOWN_KEY].rising()) {
