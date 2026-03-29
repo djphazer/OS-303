@@ -257,8 +257,10 @@ void setup() {
     Leds::Send(3, true);
   }
 
+#if DEBUG
   // 4-octave pewpew test for all 13 semitones
   PewPewPew();
+#endif
 
   engine.Load();
 }
