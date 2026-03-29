@@ -86,8 +86,11 @@ namespace Leds {
       PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
     };
 
+    // so nice, we do it twice
+    PORTF = 0x0f;
     PORTF = 0x0f;
     delayMicroseconds(SWITCH_DELAY);
+
     digitalWriteFast(select_pin, LOW);
     for (uint8_t i = 0; i < 4; ++i) {
       digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);

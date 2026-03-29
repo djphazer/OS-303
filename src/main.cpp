@@ -35,6 +35,8 @@ static bool step_counter = false;
 static bool midi_clk = false;
 static bool wrap_edit = false;
 static bool clk_run = false;
+static bool track_mode;
+static bool write_mode;
 
 static bool dac_stale = false;
 static elapsedMicros dac_timer;
@@ -47,13 +49,14 @@ static Engine engine;
 // crucial bits tying together the inputs + engine
 
 uint8_t check_pitch_inputs() {
-  uint8_t notes = 0;
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
-    if (inputs[pitched_keys[i]].held()) {
-      ++notes;
+    // pitched_keys vs. pitch_leds
+    // FIGHT!
+    if (inputs[pitched_keys[i]].rising()) {
+      return i + 1; // <-- watch out for that +1
     }
   }
-  return notes;
+  return 0;
 }
 bool check_time_inputs() {
   if (inputs[DOWN_KEY].held()) { return true; }
@@ -294,7 +297,7 @@ void PrintTime() {
 }
 
 // --- UI context/mode helpers ---
-void ProcessEdit(const bool &write_mode) {
+void ProcessEdit() {
   switch (engine.get_mode()) {
   case PITCH_MODE: {
     if (write_mode) {
@@ -311,20 +314,40 @@ void ProcessEdit(const bool &write_mode) {
 
     PrintTime();
   case NORMAL_MODE:
+    PrintPosition(engine.get_time_pos());
     break;
   }
   if (inputs[BACK_KEY].rising())
     engine.Reset();
 }
-void ProcessDefault(const bool &write_mode, const bool &clear_mod) {
+void ProcessDefault(const bool &clear_mod) {
+  // record inputs for regular pattern write mode
+  const bool pattern_write = (write_mode && !track_mode);
+
   switch (engine.get_mode()) {
   case PITCH_MODE:
+    if (pattern_write) {
+      const bool check = check_pitch_inputs();
+      DAC::SetGate(check);
+      if (clk_run || check) { // record new pitch
+        input_pitch(clk_run);
+      } else if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
+        engine.SetMode(NORMAL_MODE, true);
+    }
+
     PrintPitch(engine.get_pitch(), engine.get_accent(), engine.get_slide());
     if (!write_mode)
       engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
     break;
 
   case TIME_MODE:
+    if (pattern_write) {
+      if (clk_run || check_time_inputs()) { // record time
+        input_time(clk_run);
+      } else if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
+        engine.SetMode(NORMAL_MODE, true);
+    }
+
     PrintTime();
     if (!write_mode)
       engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
@@ -395,6 +418,42 @@ void ProcessPitchMod() {
   // TODO: other pitch effects?
 }
 
+void ProcessFunctionMod() {
+  Leds::Set(FUNCTION_MODE_LED, clk_count & (1 << 2));
+
+  if (write_mode) {
+    // show step length on LEDs
+    PrintPosition(engine.get_length() - 1);
+
+    // tap in number of steps
+    if (inputs[DOWN_KEY].rising()) {
+      if (step_counter)
+        step_counter = engine.BumpLength();
+      else {
+        engine.SetLength(1);
+        step_counter = true;
+      }
+    }
+
+    // modify length with pitch keys
+    // pitched_keys vs. pitch_leds
+    uint8_t pitch = check_pitch_inputs();
+    if (pitch--) {
+      uint8_t keyidx = pitch_leds[pitch];
+      if (keyidx < 8)
+        engine.SetLength(1 + (engine.get_length()-1) / 8 * 8 + keyidx);
+      else if (keyidx < 16 && keyidx > 11)
+        engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12));
+
+      if (inputs[ASHARP_KEY].rising())
+        engine.SetLength(1 + (engine.get_length() - 1 + 32) % MAX_STEPS);
+    }
+  }
+
+  if (inputs[CLEAR_KEY].rising()) // enter system config
+    menu_state = MENU_CONFIG;
+}
+
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 void loop() {
@@ -411,12 +470,12 @@ void loop() {
   }
 #endif
 
-  const bool track_mode = inputs[TRACK_SEL].held();
-  const bool write_mode = inputs[WRITE_MODE].held();
+  track_mode = inputs[TRACK_SEL].held();
+  write_mode = inputs[WRITE_MODE].held();
   const bool clear_mod = inputs[CLEAR_KEY].held();
   const bool edit_mode = inputs[TAP_NEXT].held();
 
-  // todo: transpose, performance stuff, config menus
+  // transpose, performance stuff, config menus
   const bool fn_mod = inputs[FUNCTION_KEY].held();
   const bool pitch_mod = inputs[PITCH_KEY].held();
   const bool time_mod = inputs[TIME_KEY].held();
@@ -466,7 +525,7 @@ void loop() {
   // -=-=- Process inputs and set LEDs -=-=-
 
   if (edit_mode) { // holding WRITE/NEXT/TAP
-    ProcessEdit(write_mode);
+    ProcessEdit();
   } else {
     // Flash lights for modifiers
     if (pitch_mod) {
@@ -475,31 +534,12 @@ void loop() {
       Leds::Set(TIME_MODE_LED, clk_count & (1 << 2));
       // TODO: performance time effects
     } else if (fn_mod) {
-      Leds::Set(FUNCTION_MODE_LED, clk_count & (1 << 2));
-
-      if (write_mode) {
-        // show step length on LEDs
-        PrintPosition(engine.get_length() - 1);
-
-        // tap in number of steps
-        if (inputs[DOWN_KEY].rising()) {
-          if (step_counter)
-            step_counter = engine.BumpLength();
-          else {
-            engine.SetLength(1);
-            step_counter = true;
-          }
-        }
-        // TODO: modify length with pitch keys
-      }
-
-      if (inputs[CLEAR_KEY].rising()) // enter system config
-        menu_state = MENU_CONFIG;
-
+      ProcessFunctionMod();
     } else {
-      ProcessDefault(write_mode, clear_mod);
+      ProcessDefault(clear_mod);
     }
   }
+
 
   // show all pressed buttons
   for (uint8_t i = 0; i < 16; ++i) {
@@ -559,29 +599,6 @@ void loop() {
       if (!wrap_edit && engine.get_time_pos() >= engine.get_length() - 1)
         engine.SetMode(NORMAL_MODE, true);
     }
-  }
-
-  // regular pattern write mode
-  if (!edit_mode && write_mode && !track_mode) {
-
-    // ok, dilemma... we want to advance first, then record the step.
-
-    if (engine.get_mode() == TIME_MODE) {
-      if (clk_run || check_time_inputs()) { // record time
-        input_time(clk_run);
-      } else if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
-        engine.SetMode(NORMAL_MODE, true);
-    }
-
-    if (engine.get_mode() == PITCH_MODE) {
-      const bool check = check_pitch_inputs();
-      DAC::SetGate(check);
-      if (clk_run || check) { // record new pitch
-        input_pitch(clk_run);
-      } else if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
-        engine.SetMode(NORMAL_MODE, true);
-    }
-
   }
 
   if (clk_run) {
