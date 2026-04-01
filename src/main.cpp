@@ -442,8 +442,10 @@ void ProcessFunctionMod() {
       uint8_t keyidx = pitch_leds[pitch];
       if (keyidx < 8)
         engine.SetLength(1 + (engine.get_length()-1) / 8 * 8 + keyidx);
-      else if (keyidx < 16 && keyidx > 11)
-        engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12));
+      else if (keyidx < 16 && keyidx > 11) {
+        const uint8_t hugesize = (engine.get_length() - 1) & (1 << 5); // either 32 or 0
+        engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12) + hugesize);
+      }
 
       if (inputs[ASHARP_KEY].rising())
         engine.SetLength(1 + (engine.get_length() - 1 + 32) % MAX_STEPS);
