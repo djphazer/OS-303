@@ -452,8 +452,10 @@ struct Engine {
   }
 
   void ToggleSlide() {
-    if (mode_ == PITCH_MODE)
+    if (mode_ == PITCH_MODE) {
       get_sequence().ToggleSlide();
+      slide_on = get_sequence().get_slide();
+    }
     stale = true;
   }
   void ToggleAccent() {
