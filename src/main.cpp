@@ -148,12 +148,14 @@ void PewPewPew() {
   }
 }
 
+#if DEBUG
 extern "C" {
   static void jumptoboot(void) {
     // call bootloader to test
     ((int (*)(void))0x1F000)();
   }
 }
+#endif
 
 void setup() {
   Serial1.begin(31250);
@@ -170,12 +172,12 @@ void setup() {
   }
 
   /* This won't be necessary in production, bootloader runs first */
+#if DEBUG
   PollInputs(inputs);
   if (inputs[TAP_NEXT].held()) {
     jumptoboot();
   }
 
-#if DEBUG
   Serial.begin(9600);
 #endif
 
@@ -231,7 +233,7 @@ void setup() {
     for (int tail = i; tail > 0 && tail > i-4; --tail) {
       Leds::Set(loadingbar[tail-1], true);
     }
-    while (timer < 50) {
+    while (timer < 32) {
       Leds::Send(timer, false); // don't clear
       delay(1);
     }
@@ -243,6 +245,7 @@ void setup() {
     Leds::Send(3, true);
   }
   // backwards progress
+  /*
   for (uint8_t i = 0; i < len; ++i) {
     Leds::Set(loadingbar[len - i], true);
     for (int tail = len - i; tail < len; ++tail) {
@@ -259,6 +262,7 @@ void setup() {
     Leds::Send(2, true);
     Leds::Send(3, true);
   }
+  */
 
 #if DEBUG
   // 4-octave pewpew test for all 13 semitones
