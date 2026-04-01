@@ -80,9 +80,12 @@ struct Sequence {
   }
   /// Next time step (wrapped) is a tie.
   bool next_is_tie() const {
-    if (length == 0) return false;
     const uint8_t n = (time_pos + 1) % length;
     return time(n) == 2;
+  }
+  bool next_is_note() const {
+    const uint8_t n = (time_pos + 1) % length;
+    return time(n) == 1;
   }
   /// Last tie in a run: on a tie step whose next step is not a tie.
   bool tie_chain_ending() const {
@@ -96,29 +99,44 @@ struct Sequence {
 
   const uint8_t get_time() const { return time(time_pos); }
 
-  void SetTime(uint8_t t) {
-    const uint8_t upper = time_pos & 1;
-    uint8_t &data = time_data[time_pos >> 1];
+  void SetTime(uint8_t t, bool next = 0) {
+    const uint8_t pos = (time_pos + next) % length;
+    const uint8_t upper = pos & 1;
+    uint8_t &data = time_data[pos >> 1];
     data = (~(0x0f << (4 * upper)) & data) | (t << (4 * upper));
   }
-  void SetPitch(uint8_t p, uint8_t flags) {
-    pitch[pitch_pos] = (p & 0x3f) | (flags & 0xc0);
+  void SetPitch(uint8_t p, uint8_t flags, bool next = 0) {
+    const uint8_t pos = (pitch_pos + next) % length;
+    pitch[pos] = (p & 0x3f) | (flags & 0xc0);
   }
-  void SetPitchSemitone(uint8_t p) {
+  void SetPitchSemitone(uint8_t p, bool next = 0) {
     init_if_empty(); 
-    pitch[pitch_pos] =
-        ((get_octave() * 12 + p) & 0x3f) | (pitch[pitch_pos] & 0xc0);
+    const uint8_t pos = (pitch_pos + next) % length;
+    pitch[pos] =
+        ((get_octave() * 12 + p) & 0x3f) | (pitch[pos] & 0xc0);
   }
-  void SetLength(uint8_t len) { length = constrain(len, 1, MAX_STEPS); }
-  void SetOctave(int oct) {
+  void SetLength(uint8_t len) {
+    length = constrain(len, 1, MAX_STEPS);
+    pitch_pos %= length;
+    time_pos %= length;
+  }
+  void SetOctave(int oct, bool next = 0) {
     init_if_empty();
     CONSTRAIN(oct, 0, 3);
-    pitch[pitch_pos] =
-        ((uint8_t)oct * 12 + get_semitone()) | (pitch[pitch_pos] & 0xc0);
+    const uint8_t pos = (pitch_pos + next) % length;
+    pitch[pos] =
+        ((uint8_t)oct * 12 + get_semitone()) | (pitch[pos] & 0xc0);
   }
 
-  void ToggleSlide() { init_if_empty(); pitch[pitch_pos] ^= (1 << 7); }
-  void ToggleAccent() { init_if_empty(); pitch[pitch_pos] ^= (1 << 6); }
+  void ToggleSlide(bool next = 0) {
+    init_if_empty();
+    pitch[(pitch_pos + next) % length] ^= (1 << 7);
+  }
+  void ToggleAccent(bool next = 0) {
+    init_if_empty();
+    pitch[(pitch_pos + next) % length] ^= (1 << 6);
+  }
+  /* unused
   void SetSlide(bool on) {
     init_if_empty();
     pitch[pitch_pos] = (pitch[pitch_pos] & ~(1 << 7)) | (on << 7);
@@ -127,6 +145,7 @@ struct Sequence {
     init_if_empty();
     pitch[pitch_pos] = (pitch[pitch_pos] & ~(1 << 6)) | (on << 6);
   }
+  */
 
   bool BumpLength() {
     if (++length == MAX_STEPS) return false;
@@ -434,33 +453,33 @@ struct Engine {
     mode_ = m;
   }
   void NudgeOctave(int dir) {
-    get_sequence().SetOctave(int(get_sequence().get_octave()) + dir);
+    get_sequence().SetOctave(int(get_sequence().get_octave()) + dir, clk_count > 3);
     stale = true;
   }
   // change pitch, preserving flags
   void SetPitchSemitone(uint8_t p) {
-    get_sequence().SetPitchSemitone(p);
+    get_sequence().SetPitchSemitone(p, clk_count > 3 && get_sequence().next_is_note());
     stale = true;
   }
   void SetPitch(uint8_t p, uint8_t flags) {
-    get_sequence().SetPitch(p, flags);
+    get_sequence().SetPitch(p, flags, clk_count > 3 && get_sequence().next_is_note());
     stale = true;
   }
   void SetTime(uint8_t t) {
-    get_sequence().SetTime(t);
+    get_sequence().SetTime(t, clk_count > 3);
     stale = true;
   }
 
   void ToggleSlide() {
     if (mode_ == PITCH_MODE) {
-      get_sequence().ToggleSlide();
+      get_sequence().ToggleSlide(clk_count > 3 && get_sequence().next_is_note());
       slide_on = get_sequence().get_slide();
     }
     stale = true;
   }
   void ToggleAccent() {
     if (mode_ == PITCH_MODE)
-      get_sequence().ToggleAccent();
+      get_sequence().ToggleAccent(clk_count > 3 && get_sequence().next_is_note());
     stale = true;
   }
 
