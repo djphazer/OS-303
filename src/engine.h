@@ -1,15 +1,12 @@
 // Copyright (c) 2026, Nicholas J. Michalek
-/* 
- * Sequencer engine logic and data model for TB-303 CPU
+/*
+ * engine.h — TB-303 pattern model + EEPROM; Engine handles patterns, clock, and gate.
  */
 
 #pragma once
 #include <Arduino.h>
 #include <EEPROM.h>
 
-//
-// *** Utilities ***
-//
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
@@ -68,28 +65,41 @@ struct Sequence {
   }
   const bool get_slide(uint8_t step) const {
     if (pitch_is_empty(step)) return false;
-    return pitch[step] & (1<<7);
+    return pitch[step] & (1 << 7);
   }
   const bool get_slide() const {
     return get_slide(pitch_pos);
   }
-  const bool is_sliding() const {
-    return (pitch_pos+1 < length) && get_slide(pitch_pos+1);
+  /// Next pitch step (wrapped) is a slide
+  const bool next_is_slide() const {
+    return get_slide((pitch_pos + 1) % length);
   }
-  const bool is_tied() const {
-    return (time_pos+1 < length) && (time(time_pos+1) == 2);
+  /// Current time step is a tie.
+  bool is_tie() const {
+    return (time_pos < length) && (time(time_pos) == 2);
   }
+  /// Next time step (wrapped) is a tie.
+  bool next_is_tie() const {
+    if (length == 0) return false;
+    const uint8_t n = (time_pos + 1) % length;
+    return time(n) == 2;
+  }
+  /// Last tie in a run: on a tie step whose next step is not a tie.
+  bool tie_chain_ending() const {
+    return is_tie() && !next_is_tie();
+  }
+
   inline uint8_t time(uint8_t idx) const {
-    return (time_data[idx >> 1] >> 4*(idx & 1)) & 0xf;
+    return (time_data[idx >> 1] >> (4 * (idx & 1))) & 0xf;
   }
-  const uint8_t get_time() const {
-    return time(time_pos);
-  }
+  inline uint8_t effective_time(uint8_t idx) const { return time(idx); }
+
+  const uint8_t get_time() const { return time(time_pos); }
 
   void SetTime(uint8_t t) {
     const uint8_t upper = time_pos & 1;
     uint8_t &data = time_data[time_pos >> 1];
-    data = (~(0x0f << 4*upper) & data) | (t << 4*upper);
+    data = (~(0x0f << (4 * upper)) & data) | (t << (4 * upper));
   }
   void SetPitch(uint8_t p, uint8_t flags) {
     pitch[pitch_pos] = (p & 0x3f) | (flags & 0xc0);
@@ -179,6 +189,7 @@ static constexpr int PATTERN_SIZE = MAX_STEPS * 2;
 const char* const sig_pew = "PewPewPew!!!";
 
 extern EEPROMClass storage;
+extern Sequence pattern[NUM_PATTERNS];
 
 struct PersistentSettings {
   char signature[16];
@@ -200,14 +211,14 @@ struct PersistentSettings {
 
 extern PersistentSettings GlobalSettings;
 
-void WritePattern(Sequence &seq, int idx) {
+inline void WritePattern(Sequence &seq, int idx) {
   uint8_t *src = seq.pitch;
   idx *= PATTERN_SIZE;
   for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
     storage.update(SETTINGS_SIZE + idx + i, src[i]);
   }
 }
-void ReadPattern(Sequence &seq, int idx) {
+inline void ReadPattern(Sequence &seq, int idx) {
   uint8_t *dst = seq.pitch;
   idx *= PATTERN_SIZE;
   for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
@@ -218,8 +229,6 @@ void ReadPattern(Sequence &seq, int idx) {
 struct Engine {
   //elapsedMillis delay_timer = 0;
 
-  // pattern storage
-  Sequence pattern[NUM_PATTERNS]; // 32 steps each
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
                       // TODO: start & end for chains
@@ -229,7 +238,8 @@ struct Engine {
 
   int8_t clk_count = -1;
 
-  bool slide_gate = false; // flag to keep the gate raised before a slid step
+  bool gate_hold = false; // tie/slide: hold gate across 16ths (firstpr.com 303 slide / gate)
+  bool slide_on = false;
   bool stale = false;
   bool resting = false; // hey shutup
 
@@ -306,8 +316,15 @@ struct Engine {
       get_sequence().Reset();
       result = get_sequence().Advance();
     }
-    if (result) {
-       slide_gate = get_slide() || get_sequence().is_tied() || get_sequence().is_sliding();
+
+    if (result) { // -- state transition for new step
+      // Gate: held high only when THIS step extends into the next (slide out or tie).
+      // Slide: stays high when arriving at a tie, or goes high when arriving at a slide, otherwise, cancel
+      gate_hold = get_sequence().next_is_slide() || get_sequence().next_is_tie();
+      slide_on = (slide_on && get_sequence().is_tie()) || get_sequence().get_slide();
+    } else { // rest
+      slide_on = false;
+      gate_hold = false;
     }
     resting = !result;
     return result;
@@ -328,7 +345,8 @@ struct Engine {
   void Reset() {
     get_sequence().Reset();
     clk_count = -1;
-    slide_gate = false;
+    gate_hold = false;
+    slide_on = false;
     resting = true;
   }
 
@@ -356,10 +374,12 @@ struct Engine {
   const Sequence &get_pattern(uint8_t idx) const { return pattern[idx & 0xf]; }
 
   bool get_gate() const {
-    // TODO: fancy stuff for shuffle, ratchets, etc.
-    // also for emulated jitter
-    //delay_timer > 0 && 
-    return ((clk_count < 3) || slide_gate) && !resting;
+    if (resting) return false;
+    if (gate_hold) return true; // tie/slide: hold through the 16th (cf. full clk_count span)
+    // First 3 of 6 DIN clocks per 16th — matches reference OS-303. A ~1.3ms micros() window
+    // here is easy to miss if loop() is slower than that (MIDI/LEDs/etc.), so non-slide
+    // notes go silent while slide/tie still work (slide_gate holds high all 6 clocks).
+    return clk_count < 3;
   }
   bool get_accent() const {
     return !resting && get_sequence().get_accent();
@@ -378,7 +398,7 @@ struct Engine {
     return 36 + semitone + (oct * 12);
   }
   bool get_slide() const {
-    return get_sequence().get_slide();
+    return slide_on;
   }
   uint8_t get_time_pos() const {
     return get_sequence().time_pos;
@@ -415,6 +435,7 @@ struct Engine {
   }
   void NudgeOctave(int dir) {
     get_sequence().SetOctave(int(get_sequence().get_octave()) + dir);
+    stale = true;
   }
   // change pitch, preserving flags
   void SetPitchSemitone(uint8_t p) {

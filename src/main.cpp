@@ -15,6 +15,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 EEPROMClass storage;
 PersistentSettings GlobalSettings;
+Sequence pattern[NUM_PATTERNS];
 
 enum MenuState {
   MENU_NONE,
