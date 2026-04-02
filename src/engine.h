@@ -103,7 +103,7 @@ struct Sequence {
     const uint8_t pos = (time_pos + next) % length;
     const uint8_t upper = pos & 1;
     uint8_t &data = time_data[pos >> 1];
-    data = (~(0x0f << (4 * upper)) & data) | (t << (4 * upper));
+    data = (~(0x0f << (4 * upper)) & data) | ((t & 0xf) << (4 * upper));
   }
   void SetPitch(uint8_t p, uint8_t flags, bool next = 0) {
     const uint8_t pos = (pitch_pos + next) % length;
@@ -481,6 +481,10 @@ struct Engine {
     if (mode_ == PITCH_MODE)
       get_sequence().ToggleAccent(clk_count > 3 && get_sequence().next_is_note());
     stale = true;
+  }
+
+  void ToggleTriplets() {
+    // TODO: 8 clocks instead of 6, right?
   }
 
 };

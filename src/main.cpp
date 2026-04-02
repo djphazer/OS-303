@@ -100,6 +100,10 @@ void input_time(bool mod = false) {
     if (!mod) engine.Advance();
     engine.SetTime(0); // rest
   }
+  if (inputs[SLIDE_KEY].rising()) {
+    if (!mod) engine.Advance();
+    engine.SetTime(3); // ????
+  }
 }
 
 
@@ -448,12 +452,27 @@ void ProcessFunctionMod() {
       if (keyidx < 8)
         engine.SetLength(1 + (engine.get_length()-1) / 8 * 8 + keyidx);
       else if (keyidx < 16 && keyidx > 11) {
-        const uint8_t hugesize = (engine.get_length() - 1) & (1 << 5); // either 32 or 0
-        engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12) + hugesize);
+        const uint8_t huge = (engine.get_length() - 1) & (1 << 5); // either 32 or 0
+        engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12) + huge);
       }
 
       if (inputs[ASHARP_KEY].rising())
         engine.SetLength(1 + (engine.get_length() - 1 + 32) % MAX_STEPS);
+    }
+
+    if (inputs[UP_KEY].rising()) {
+      // TODO: triplets mode?
+      // I also want variable swing, which is a bit different ...
+      engine.ToggleTriplets();
+    }
+
+    // half
+    if (inputs[ACCENT_KEY].rising()) {
+      engine.SetLength(engine.get_length() / 2);
+    }
+    // double
+    if (inputs[SLIDE_KEY].rising()) {
+      engine.SetLength(engine.get_length() * 2);
     }
   }
 
