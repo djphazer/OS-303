@@ -49,6 +49,14 @@ static Engine engine;
 
 // crucial bits tying together the inputs + engine
 
+uint8_t check_pitch_held() {
+  for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
+    if (inputs[pitched_keys[i]].held()) {
+      return i + 1; // <-- watch out for that +1
+    }
+  }
+  return 0;
+}
 uint8_t check_pitch_inputs() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     // pitched_keys vs. pitch_leds
@@ -335,7 +343,7 @@ void ProcessDefault(const bool &clear_mod) {
   switch (engine.get_mode()) {
   case PITCH_MODE:
     if (pattern_write) {
-      const bool check = check_pitch_inputs();
+      const bool check = check_pitch_held();
       DAC::SetGate(check);
       if (clk_run || check) { // record new pitch
         input_pitch(clk_run);
