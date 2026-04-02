@@ -63,7 +63,7 @@ bool check_time_inputs() {
   if (inputs[DOWN_KEY].held()) { return true; }
   if (inputs[UP_KEY].held()) { return true; }
   if (inputs[ACCENT_KEY].held()) { return true; }
-  //if (inputs[SLIDE_KEY].held()) return true; // TODO: spicy time option, ratchets maybe
+  if (inputs[SLIDE_KEY].held()) return true;
   return false;
 }
 void input_pitch(bool mod = false) {
@@ -299,8 +299,7 @@ void PrintTime() {
   Leds::Set(DOWN_KEY_LED, engine.get_time() == 1);
   Leds::Set(UP_KEY_LED, engine.get_time() == 2);
   Leds::Set(ACCENT_KEY_LED, engine.get_time() == 0);
-  // TODO: step-lock bit or something...
-  //Leds::Set(SLIDE_KEY_LED, engine.get_time() == 3);
+  Leds::Set(SLIDE_KEY_LED, engine.get_time() == 3); // ???
 
   PrintPosition(engine.get_time_pos());
 }

@@ -85,7 +85,7 @@ struct Sequence {
   }
   bool next_is_note() const {
     const uint8_t n = (time_pos + 1) % length;
-    return time(n) == 1;
+    return time(n) & 1;
   }
   /// Last tie in a run: on a tie step whose next step is not a tie.
   bool tie_chain_ending() const {
@@ -95,7 +95,6 @@ struct Sequence {
   inline uint8_t time(uint8_t idx) const {
     return (time_data[idx >> 1] >> (4 * (idx & 1))) & 0xf;
   }
-  inline uint8_t effective_time(uint8_t idx) const { return time(idx); }
 
   const uint8_t get_time() const { return time(time_pos); }
 
@@ -189,7 +188,7 @@ struct Sequence {
     ++time_pos %= length;
     if (time_pos == 0)
       pitch_pos = 0;
-    else if (time(time_pos) == 1)
+    else if (time(time_pos) & 1)
       ++pitch_pos;
     return time(time_pos);
   }
@@ -394,6 +393,10 @@ struct Engine {
 
   bool get_gate() const {
     if (resting) return false;
+    if (get_time() == 3) { // ratchet overrides slide and tie stuff
+      return !(clk_count & 1); // 3x
+      //return !(clk_count == 2 || clk_count == 5); // 2x
+    }
     if (gate_hold) return true; // tie/slide: hold through the 16th (cf. full clk_count span)
     // First 3 of 6 DIN clocks per 16th — matches reference OS-303. A ~1.3ms micros() window
     // here is easy to miss if loop() is slower than that (MIDI/LEDs/etc.), so non-slide
@@ -401,7 +404,8 @@ struct Engine {
     return clk_count < 3;
   }
   bool get_accent() const {
-    return !resting && get_sequence().get_accent();
+    if (resting) return false;
+    return get_sequence().get_accent();
   }
   uint8_t get_semitone() const {
     return get_sequence().get_semitone();
