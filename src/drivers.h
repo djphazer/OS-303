@@ -86,11 +86,8 @@ namespace Leds {
       PG0_PIN, PG1_PIN, PG2_PIN, PG3_PIN,
     };
 
-    // so nice, we do it twice
-    PORTF = 0x0f;
     PORTF = 0x0f;
     delayMicroseconds(SWITCH_DELAY);
-
     digitalWriteFast(select_pin, LOW);
     for (uint8_t i = 0; i < 4; ++i) {
       digitalWriteFast(switched_pins[i], (enable_mask & (1 << i))?HIGH:LOW);
@@ -126,6 +123,11 @@ void PollInputs(PinState *inputs) {
   // This clears any residual LED drive state from the previous Leds::Send() call,
   // which would otherwise cause matrix crosstalk and ghost button reads.
   PORTF = 0x0f;
+  // these 4 calls are redundant, but apparently it helps
+  digitalWriteFast(PG0_PIN, LOW);
+  digitalWriteFast(PG1_PIN, LOW);
+  digitalWriteFast(PG2_PIN, LOW);
+  digitalWriteFast(PG3_PIN, LOW);
   delayMicroseconds(SWITCH_DELAY);
 
   // read PA and PB pins while select pins are high
