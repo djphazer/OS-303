@@ -74,7 +74,8 @@ bool check_time_inputs() {
   if (inputs[SLIDE_KEY].held()) return true;
   return false;
 }
-void input_pitch(bool mod = false) {
+bool input_pitch(bool mod = false) {
+  bool result = false;
   if (mod) {
     if (inputs[ACCENT_KEY].rising()) engine.ToggleAccent();
     if (inputs[SLIDE_KEY].rising()) engine.ToggleSlide();
@@ -92,26 +93,34 @@ void input_pitch(bool mod = false) {
                               (inputs[SLIDE_KEY].held() << 7); // | (oct << 4);
         engine.SetPitch(i + 12*oct, flags);
       }
+      result = true;
     }
   }
+  return result;
 }
-void input_time(bool mod = false) {
+bool input_time(bool mod = false) {
+  bool result = false;
   if (inputs[DOWN_KEY].rising()) {
     if (!mod) engine.Advance();
     engine.SetTime(1); // note
+    result = true;
   }
   if (inputs[UP_KEY].rising()) {
     if (!mod) engine.Advance();
     engine.SetTime(2); // tie
+    result = true;
   }
   if (inputs[ACCENT_KEY].rising()) {
     if (!mod) engine.Advance();
     engine.SetTime(0); // rest
+    result = true;
   }
   if (inputs[SLIDE_KEY].rising()) {
     if (!mod) engine.Advance();
     engine.SetTime(3); // ????
+    result = true;
   }
+  return result;
 }
 
 
@@ -345,10 +354,12 @@ void ProcessDefault(const bool &clear_mod) {
     if (pattern_write) {
       const bool check = check_pitch_held();
       DAC::SetGate(check);
-      if (clk_run || check) { // record new pitch
-        input_pitch(clk_run);
-      } else if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
-        engine.SetMode(NORMAL_MODE, true);
+      // record new pitch
+      if (!input_pitch(clk_run) && !check) {
+        // kick out after recording last step - only if no input held or rising
+        if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
+          engine.SetMode(NORMAL_MODE, true);
+      }
     }
 
     PrintPitch(engine.get_pitch(), engine.get_accent(), engine.get_slide());
@@ -358,10 +369,11 @@ void ProcessDefault(const bool &clear_mod) {
 
   case TIME_MODE:
     if (pattern_write) {
-      if (clk_run || check_time_inputs()) { // record time
-        input_time(clk_run);
-      } else if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
-        engine.SetMode(NORMAL_MODE, true);
+      if (!input_time(clk_run) && !check_time_inputs()) {
+        // kick out after recording last step - only if no input held or rising
+        if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
+          engine.SetMode(NORMAL_MODE, true);
+      }
     }
 
     PrintTime();
