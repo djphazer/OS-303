@@ -552,6 +552,17 @@ void loop() {
   // DIN sync clock @ 24ppqn
   if (!midi_clk) {
     clocked = inputs[CLOCK].rising();
+
+    // MIDI sync - sent if not already receiving midi clock
+    if (clocked) {
+      MIDI.sendRealTime(midi::Clock);
+    }
+    if (inputs[RUN].rising()) {
+      MIDI.sendRealTime(midi::Start);
+    }
+    if (inputs[RUN].falling()) {
+      MIDI.sendRealTime(midi::Stop);
+    }
   }
 
   // Save pattern data - only if clock isn't running, to prevent stuttering
