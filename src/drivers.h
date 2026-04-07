@@ -3,7 +3,8 @@
 #pragma once
 #include "pins.h"
 
-static constexpr uint16_t SWITCH_DELAY = 15; // microseconds
+// not sure if we even need this...
+static constexpr uint16_t SWITCH_DELAY = 1; // microseconds
 
 //
 // --- 303 CPU driver functions
@@ -27,7 +28,7 @@ namespace DAC {
     PORTE = 0; // disable latch
     // set gate and accent pins, enable latch/slide
     PORTE = (gate_ << 1) | (accent_ << 6) | 0x1;
-    delayMicroseconds(10); // make sure the latch stays on long enough
+    //delayMicroseconds(10); // make sure the latch stays on long enough?
     if (!slide_) // turn slide bit back off
       PORTE ^= 0x1;
 
@@ -95,7 +96,8 @@ namespace Leds {
   }
 
   // hardware output, framebuffer reset
-  void Send(const uint8_t tick, const bool clear = true) {
+  void Send(const bool clear = true) {
+    static uint8_t tick = 0;
     //const uint8_t cycle = (tick >> 2) & 0x3; // scanner for select pins, bits 0-3
 
     // switched LEDs
@@ -114,6 +116,7 @@ namespace Leds {
       ledstate[1] = 0;
       ledstate[2] = 0;
     }
+    ++tick;
   }
 
 } // namespace Leds
@@ -123,11 +126,6 @@ void PollInputs(PinState *inputs) {
   // This clears any residual LED drive state from the previous Leds::Send() call,
   // which would otherwise cause matrix crosstalk and ghost button reads.
   PORTF = 0x0f;
-  // these 4 calls are redundant, but apparently it helps
-  digitalWriteFast(PG0_PIN, LOW);
-  digitalWriteFast(PG1_PIN, LOW);
-  digitalWriteFast(PG2_PIN, LOW);
-  digitalWriteFast(PG3_PIN, LOW);
   delayMicroseconds(SWITCH_DELAY);
 
   // read PA and PB pins while select pins are high
