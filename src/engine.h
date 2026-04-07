@@ -10,8 +10,8 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
-static constexpr int MAX_STEPS = 64;
-static constexpr int NUM_PATTERNS = 16;
+static constexpr int MAX_STEPS = 32;
+static constexpr int NUM_PATTERNS = 16; // per bank; 4 banks in eeprom
 
 enum SequencerMode {
   NORMAL_MODE,
@@ -29,14 +29,43 @@ enum OctaveState {
 static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
 static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
 
+static constexpr size_t PITCH_SIZE = MAX_STEPS;
+static constexpr size_t TIME_SIZE = MAX_STEPS / 2;
+static constexpr size_t METADATA_SIZE = 8;
+
+// --- EEPROM data layout ( 4K total ) ---
+static constexpr size_t SETTINGS_SIZE = 128; // 16-byte sig + flags + maybe quantizer scales?
+static constexpr size_t SETTINGS_OFFSET = 0;
+static constexpr size_t PITCH_DATA_SIZE = 2048; // 8-bit pitch steps
+static constexpr size_t PITCH_DATA_OFFSET = SETTINGS_OFFSET + SETTINGS_SIZE;
+static constexpr size_t TIME_DATA_SIZE = 1024; // 4-bit time steps
+static constexpr size_t TIME_DATA_OFFSET = PITCH_DATA_OFFSET + PITCH_DATA_SIZE;
+static constexpr size_t PATTERN_DATA_SIZE = 512; // 64 total patterns * 8 bytes
+static constexpr size_t PATTERN_DATA_OFFSET = TIME_DATA_OFFSET + TIME_DATA_SIZE;
+static constexpr size_t TRACK_DATA_SIZE = 6 * 32 * 2;
+static constexpr size_t TRACK_DATA_OFFSET = PATTERN_DATA_OFFSET + PATTERN_DATA_SIZE;
+
+// and this is what's left...
+static constexpr int AUX_DATA_SIZE = 4096 - (TRACK_DATA_OFFSET + TRACK_DATA_SIZE);
+static_assert(AUX_DATA_SIZE >= 0, "EEPROM OVERFLOW!");
+
+// Signature - max 15 characters (+ null terminator)
+// Shorter strings will match longer ones as a prefix, so appending characters
+// retains compatibility with upstream and old versions, etc.
+const char* const sig_pew = "OS-303-v0.5";
+
 struct Sequence {
+  //Sequence(uint8_t *p, uint8_t *t) : pitch(p), time_data(t) {}
+
   // --- sequence data - 128 bytes
   // for DAC pitch, 0 is a low G#; 4 is lowest C; and middle C is 28
   // We're gonna store pitch as if the lowest C is 0, so it needs +4 when sent to DAC
   uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
   uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=??
   // time is stored as nibbles, so there's actually a lot of padding
-  uint8_t reserved[MAX_STEPS/2 - 1];
+
+  // this also doubles as the entry point for the metadata
+  uint8_t reserved[METADATA_SIZE - 1]; // compiler won't like this
   uint8_t length = 16;
   // --- end sequence data
 
@@ -44,7 +73,11 @@ struct Sequence {
   int pitch_pos, time_pos;
   bool reset; // hold plz
 
-  // --- functions
+  // void Init(uint8_t *p, uint8_t *t) {
+  //   pitch = p;
+  //   time_data = t;
+  // }
+
   // 6-bit pitch, 0 == low C
   const uint8_t get_pitch() const {
     if (step_is_empty()) return PITCH_DEFAULT; // silent default, gate will be off
@@ -200,14 +233,8 @@ struct Sequence {
   }
 };
 
-// --- EEPROM data layout
-static constexpr int SETTINGS_SIZE = 128;
-static constexpr int PATTERN_SIZE = MAX_STEPS * 2;
-
-const char* const sig_pew = "PewPewPew!!!";
-
 extern EEPROMClass storage;
-extern Sequence pattern[NUM_PATTERNS];
+extern Sequence pattern[NUM_PATTERNS]; // enough to hold one bank in RAM
 
 struct PersistentSettings {
   char signature[16];
@@ -231,16 +258,30 @@ extern PersistentSettings GlobalSettings;
 
 inline void WritePattern(Sequence &seq, int idx) {
   uint8_t *src = seq.pitch;
-  idx *= PATTERN_SIZE;
-  for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
-    storage.update(SETTINGS_SIZE + idx + i, src[i]);
+  for (uint8_t i = 0; i < PITCH_SIZE; ++i) {
+    storage.update(PITCH_DATA_OFFSET + (idx * PITCH_SIZE) + i, src[i]);
+  }
+  src = seq.time_data;
+  for (uint8_t i = 0; i < TIME_SIZE; ++i) {
+    storage.update(TIME_DATA_OFFSET + (idx * TIME_SIZE) + i, src[i]);
+  }
+  src = seq.reserved;
+  for (uint8_t i = 0; i < METADATA_SIZE; ++i) {
+    storage.update(PATTERN_DATA_OFFSET + (idx * METADATA_SIZE) + i, src[i]);
   }
 }
 inline void ReadPattern(Sequence &seq, int idx) {
   uint8_t *dst = seq.pitch;
-  idx *= PATTERN_SIZE;
-  for (uint8_t i = 0; i < PATTERN_SIZE; ++i) {
-    dst[i] = storage.read(SETTINGS_SIZE + idx + i);
+  for (uint8_t i = 0; i < PITCH_SIZE; ++i) {
+    dst[i] = storage.read(PITCH_DATA_OFFSET + (idx * PITCH_SIZE) + i);
+  }
+  dst = seq.time_data;
+  for (uint8_t i = 0; i < TIME_SIZE; ++i) {
+    dst[i] = storage.read(TIME_DATA_OFFSET + (idx * TIME_SIZE) + i);
+  }
+  dst = seq.reserved;
+  for (uint8_t i = 0; i < METADATA_SIZE; ++i) {
+    dst[i] = storage.read(PATTERN_DATA_OFFSET + (idx * METADATA_SIZE) + i);
   }
 }
 
@@ -262,7 +303,7 @@ struct Engine {
   bool resting = false; // hey shutup
 
   // actions
-  void Load() {
+  void Load(uint8_t bank) {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
 #endif
@@ -271,13 +312,15 @@ struct Engine {
     GlobalSettings.Load();
     if (GlobalSettings.Validate()) {
       for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-        ReadPattern(pattern[i], i);
+        ReadPattern(pattern[i], i + bank * NUM_PATTERNS);
         if (0 == pattern[i].length) pattern[i].SetLength(8);
       }
     } else {
 #if DEBUG
       Serial.println("EEPROM data invalid, initializing...");
 #endif
+      // TODO: migration from old signatures could happen here instead
+
       // initialize memory with defaults or zeroes
       for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
         pattern[i].Clear();

@@ -288,7 +288,8 @@ void setup() {
   PewPewPew();
 #endif
 
-  engine.Load();
+  // TODO: switch banks in main loop
+  engine.Load(0);
 }
 
 // --- LED helpers ---
