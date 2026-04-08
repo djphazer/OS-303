@@ -668,7 +668,7 @@ void loop() {
   }
   // pitch always comes from the engine
   // sometimes right after assigning a new pitch to current step while stopped
-  DAC::SetPitch(engine.get_pitch() + 4 + transpose);
+  DAC::SetPitch(11 + engine.get_pitch() + transpose);
 
   // catch falling edge of RUN
   if (inputs[RUN].falling() && !midi_clk) {
