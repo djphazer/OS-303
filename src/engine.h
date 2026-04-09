@@ -400,6 +400,9 @@ struct Engine {
       }
     }
 
+    // ignore Tie after a Rest
+    if (resting && result && get_sequence().is_tie()) result = false;
+
     if (result) { // -- state transition for new step
       // Gate: held high only when THIS step extends into the next (slide out or tie).
       // Slide: stays high when arriving at a tie, or goes high when arriving at a slide, otherwise, cancel
