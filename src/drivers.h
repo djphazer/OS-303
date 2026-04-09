@@ -107,7 +107,7 @@ namespace Leds {
 
     // direct LEDs
     for (uint8_t i = 16; i < 20; ++i) {
-      digitalWriteFast(switched_leds[i].led, (ledstate[2] & (1 << (i-16))) ? HIGH : LOW);
+      digitalWriteFast(switched_leds[i].led, ((tick & 0x3) == 0) && (ledstate[2] & (1 << (i-16))) ? HIGH : LOW);
     }
 
     if (clear) {

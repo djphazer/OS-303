@@ -42,7 +42,7 @@ static bool write_mode;
 
 static bool dac_stale = false;
 static elapsedMicros dac_timer;
-static elapsedMillis led_timer;
+// static elapsedMillis led_timer;
 static elapsedMillis pattern_cleared_flash_timer;
 static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
 
@@ -645,11 +645,10 @@ void loop() {
   }
 
   // a way to throttle LED update for dimming
-  if (led_timer > 1) {
-    Leds::Send(); // hardware output, framebuffer reset
-    led_timer = 0;
-    // TODO: non-switched LEDs will still be max brightness unless we turn them off...
-  }
+  // if (led_timer > 1) {
+  Leds::Send(); // hardware output, framebuffer reset
+    // led_timer = 0;
+  // }
 
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
            | (inputs[TRACK_BIT1].held() << 1)
