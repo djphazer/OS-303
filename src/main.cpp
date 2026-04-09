@@ -398,8 +398,8 @@ void ProcessDefault(const bool &clear_mod) {
     // solid LED for queued pattern
     if (engine.get_patsel() != engine.get_next())
       Leds::Set(OutputIndex(engine.get_next() & 0x7), true);
-    Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3)); // A
-    Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3));   // B
+    Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3) || (!(engine.get_next() >> 3) && clk_count & 1)); // A
+    Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3) || ((engine.get_next() >> 3) && clk_count & 1));   // B
 
     if (clk_run && write_mode) {
       PrintPosition(engine.get_time_pos());
@@ -407,7 +407,7 @@ void ProcessDefault(const bool &clear_mod) {
     // Inputs for Pattern Select
     for (uint8_t i = 0; i < 8; ++i) {
       if (inputs[i].rising()) {
-        const uint8_t patsel = (engine.get_patsel() >> 3) * 8 + i;
+        const uint8_t patsel = (engine.get_next() >> 3) * 8 + i;
         if (clear_mod) {
           engine.ClearPattern(patsel);
           pattern_cleared_flash_timer = 0;
@@ -416,9 +416,9 @@ void ProcessDefault(const bool &clear_mod) {
       }
     }
     if (inputs[ACCENT_KEY].rising())
-      engine.SetPattern(engine.get_patsel() % 8, !clk_run); // A
+      engine.SetPattern(engine.get_next() % 8, !clk_run); // A
     if (inputs[SLIDE_KEY].rising())
-      engine.SetPattern(engine.get_patsel() % 8 + 8, !clk_run); // B
+      engine.SetPattern(engine.get_next() % 8 + 8, !clk_run); // B
     break;
   }
 
