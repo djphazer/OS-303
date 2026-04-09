@@ -80,15 +80,24 @@ struct Sequence {
   // }
 
   // 6-bit pitch, 0 == low C
+  const uint8_t get_pitch(uint8_t pos) const {
+    return pitch[pos] & 0x3f;
+  }
   const uint8_t get_pitch() const {
     if (step_is_empty()) return PITCH_DEFAULT; // silent default, gate will be off
-    return pitch[pitch_pos] & 0x3f;
+    return get_pitch(pitch_pos);
+  }
+  const uint8_t get_octave(uint8_t pos) const {
+    return (pitch[pos] & 0x3f) / 12;
   }
   const uint8_t get_octave() const {
     if (step_is_empty()) return OCTAVE_ZERO;
-    return get_pitch() / 12;
+    return get_octave(pitch_pos);
   }
   // semitone index (0–11) for LED display. Returns 0xFF if step is unwritten.
+  const uint8_t get_semitone(uint8_t pos) const {
+    return get_pitch(pos) % 12;
+  }
   const uint8_t get_semitone() const {
     if (step_is_empty()) return PITCH_EMPTY;
     return get_pitch() % 12;
@@ -146,19 +155,26 @@ struct Sequence {
     init_if_empty(); 
     const uint8_t pos = (pitch_pos + next) % length;
     pitch[pos] =
-        ((get_octave() * 12 + p) & 0x3f) | (pitch[pos] & 0xc0);
+        ((get_octave(pos) * 12 + p) & 0x3f) | (pitch[pos] & 0xc0);
   }
   void SetLength(uint8_t len) {
     length = constrain(len, 1, MAX_STEPS);
     pitch_pos %= length;
     time_pos %= length;
   }
+  void NudgeOctave(int dir, bool next = 0) {
+    const uint8_t pos = (pitch_pos + next) % length;
+    int oct = get_octave(pos) + dir;
+    CONSTRAIN(oct, 0, 3);
+    pitch[pos] =
+        ((uint8_t)oct * 12 + get_semitone(pos)) | (pitch[pos] & 0xc0);
+  }
   void SetOctave(int oct, bool next = 0) {
     init_if_empty();
     CONSTRAIN(oct, 0, 3);
     const uint8_t pos = (pitch_pos + next) % length;
     pitch[pos] =
-        ((uint8_t)oct * 12 + get_semitone()) | (pitch[pos] & 0xc0);
+        ((uint8_t)oct * 12 + get_semitone(pos)) | (pitch[pos] & 0xc0);
   }
 
   void ToggleSlide(bool next = 0) {
@@ -551,7 +567,7 @@ struct Engine {
     mode_ = m;
   }
   void NudgeOctave(int dir) {
-    get_sequence().SetOctave(int(get_sequence().get_octave()) + dir, clk_count > 3);
+    get_sequence().NudgeOctave(dir, clk_count > 3);
     stale = true;
   }
   // change pitch, preserving flags
