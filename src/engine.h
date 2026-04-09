@@ -308,8 +308,7 @@ struct Engine {
   bool stale = false;
   bool resting = false; // hey shutup
 
-  // actions
-  void Load(uint8_t bank) {
+  void Init() {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
 #endif
@@ -317,10 +316,7 @@ struct Engine {
     // TODO: settings and calibration
     GlobalSettings.Load();
     if (GlobalSettings.Validate()) {
-      for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-        ReadPattern(pattern[i], i + bank * NUM_PATTERNS);
-        if (0 == pattern[i].length) pattern[i].SetLength(8);
-      }
+      Load(0);
     } else {
 #if DEBUG
       Serial.println("EEPROM data invalid, initializing...");
@@ -333,7 +329,22 @@ struct Engine {
       }
       GlobalSettings.Save();
       stale = true;
-      Save();
+      Save(0);
+      // stale = true;
+      // Save(1);
+      // stale = true;
+      // Save(2);
+      // stale = true;
+      // Save(3);
+    }
+  }
+
+  // actions
+  void Load(uint8_t bank) {
+    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      ReadPattern(pattern[i], i + bank * NUM_PATTERNS);
+      if (0 == pattern[i].length || 0xff == pattern[i].length)
+        pattern[i].Clear();
     }
 
 #if DEBUG
@@ -344,21 +355,15 @@ struct Engine {
     Serial.print("\n");
 #endif
   }
-  void Save(int pidx = -1) {
+  void Save(uint8_t bank) {
     if (!stale) return;
 #if DEBUG
     Serial.print("Saving to EEPROM... ");
 #endif
-    if (pidx < 0) {
-      // save all
-      for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-#if DEBUG
-        Serial.print(".");
-#endif
-        WritePattern(pattern[i], i);
-      }
-    } else
-      WritePattern(pattern[pidx], pidx);
+    // save all
+    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      WritePattern(pattern[i], i + bank * NUM_PATTERNS);
+    }
 
     stale = false;
 #if DEBUG

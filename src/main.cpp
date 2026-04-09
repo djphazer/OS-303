@@ -32,6 +32,7 @@ static uint8_t transpose_next = 12;
 static PinState inputs[INPUT_COUNT];
 
 static uint8_t tracknum = 0;
+static uint8_t bank_loaded = 0;
 static bool step_counter = false;
 static bool midi_clk = false;
 static bool wrap_edit = false;
@@ -252,6 +253,10 @@ void setup() {
   elapsedMillis timer = 0;
   const uint8_t len = ARRAY_SIZE(loadingbar);
   for (uint8_t i = 0; i < len; ++i) {
+    // clear
+    Leds::Send();
+    Leds::Send();
+
     Leds::Set(loadingbar[i], true);
     for (int tail = i; tail > 0 && tail > i-4; --tail) {
       Leds::Set(loadingbar[tail-1], true);
@@ -261,9 +266,6 @@ void setup() {
       delay(1);
     }
     timer = 0;
-    // clear
-    Leds::Send();
-    Leds::Send();
   }
   // backwards progress
   /*
@@ -288,8 +290,8 @@ void setup() {
   PewPewPew();
 #endif
 
-  // TODO: switch banks in main loop
-  engine.Load(0);
+  // this might take a while on first boot
+  engine.Init();
 }
 
 // --- LED helpers ---
@@ -319,12 +321,12 @@ void PrintTime() {
   PrintPosition(engine.get_time_pos());
 }
 void PrintChain(uint8_t stepidx, bool b_section) {
+  Leds::Set(ACCENT_KEY_LED, !b_section); // A
+  Leds::Set(SLIDE_KEY_LED, b_section);   // B
   if (0 == engine.p_chain_len) return;
 
   const uint8_t data = engine.p_chain[stepidx];
   Leds::Set(OutputIndex(data & 0x7), true);
-  Leds::Set(ACCENT_KEY_LED, !b_section); // A
-  Leds::Set(SLIDE_KEY_LED, b_section);   // B
 
   Leds::Set(CSHARP_KEY_LED, (data >> 4) & 1);
   Leds::Set(DSHARP_KEY_LED, (data >> 5) & 1);
@@ -400,6 +402,9 @@ void ProcessDefault(const bool &clear_mod) {
       Leds::Set(OutputIndex(engine.get_next() & 0x7), true);
     Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3) || (!(engine.get_next() >> 3) && clk_count & 1)); // A
     Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3) || ((engine.get_next() >> 3) && clk_count & 1));   // B
+
+    // indicator for quickchain
+    Leds::Set(ASHARP_KEY_LED, engine.p_chain_len);
 
     if (clk_run && write_mode) {
       PrintPosition(engine.get_time_pos());
@@ -524,6 +529,10 @@ void ProcessFunctionMod() {
       step_edit = engine.AddToChain(patsel - 1 + b_section * 8);
     }
 
+    if (inputs[BACK_KEY].rising()) {
+      // TODO: undo, step backward
+    }
+
     PrintChain(step_edit, b_section);
   }
 
@@ -602,7 +611,7 @@ void loop() {
   // - when stopping the clock
   if ((inputs[WRITE_MODE].falling() && !clk_run) ||
       (inputs[RUN].falling() && !midi_clk)) {
-    engine.Save();
+    engine.Save(bank_loaded);
   }
 
   if (inputs[RUN].rising()) {
@@ -645,6 +654,12 @@ void loop() {
   tracknum = uint8_t(inputs[TRACK_BIT0].held()
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2));
+
+  if (!clk_run && (tracknum >> 1) != bank_loaded) {
+    engine.Save(bank_loaded);
+    bank_loaded = tracknum >> 1;
+    engine.Load(bank_loaded);
+  }
 
   // --- other input handling
   if (inputs[TIME_KEY].rising() && write_mode) engine.SetMode(TIME_MODE, !clk_run);
