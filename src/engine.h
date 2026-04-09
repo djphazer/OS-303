@@ -11,6 +11,7 @@
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
 static constexpr int MAX_STEPS = 32;
+static constexpr int MAX_CHAIN = 32;
 static constexpr int NUM_PATTERNS = 16; // per bank; 4 banks in eeprom
 
 enum SequencerMode {
@@ -286,14 +287,19 @@ inline void ReadPattern(Sequence &seq, int idx) {
 }
 
 struct Engine {
-  //elapsedMillis delay_timer = 0;
+  uint8_t p_chain[MAX_CHAIN]; // 4-bit p_select | 4-bit repeats
+  uint8_t p_chain_pos = 0;
+  int8_t p_repeats = -1;
+  uint8_t p_chain_len = 0;
 
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
-                      // TODO: start & end for chains
+
+  uint8_t t_chain[MAX_CHAIN]; // 6-bit transpose progression
+  uint8_t t_chain_idx = 0;
+  bool t_chain_active = false;
 
   SequencerMode mode_ = NORMAL_MODE;
-  //uint8_t chains[16][7]; // 7 tracks, up to 16 chained patterns
 
   int8_t clk_count = -1;
 
@@ -372,10 +378,21 @@ struct Engine {
   bool Advance() {
     bool result = get_sequence().Advance();
     // jump to next pattern at end of current one
-    if (0 == get_sequence().time_pos && next_p != p_select) {
-      p_select = next_p;
-      get_sequence().Reset();
-      result = get_sequence().Advance();
+    if (0 == get_sequence().time_pos) {
+      // pattern-chaining active?
+      if (p_chain_len) {
+        if (++p_repeats > (p_chain[p_chain_pos] >> 4)) {
+          ++p_chain_pos %= p_chain_len;
+          p_repeats = 0;
+        }
+        next_p = p_chain[p_chain_pos] & 0x0f;
+      }
+
+      if (next_p != p_select) {
+        p_select = next_p;
+        get_sequence().Reset();
+        result = get_sequence().Advance();
+      }
     }
 
     if (result) { // -- state transition for new step
@@ -409,6 +426,8 @@ struct Engine {
     gate_hold = false;
     slide_on = false;
     resting = true;
+    p_chain_pos = 0;
+    p_repeats = -1;
   }
 
   void Generate() {
@@ -486,6 +505,30 @@ struct Engine {
   void SetPattern(uint8_t p_, bool override = false) {
     next_p = p_ & 0xf; // p_ % 16;
     if (override) p_select = next_p;
+    p_chain_len = 0;
+  }
+  uint8_t AddToChain(uint8_t p_) {
+    static uint8_t idx = 0;
+    if (idx >= MAX_CHAIN) return 0;
+    if (!p_chain_len) {
+      idx = 0;
+      p_chain_pos = 0;
+      p_chain_len = 1;
+      p_repeats = 0;
+      p_chain[0] = p_ & 0x0f;
+      return 0;
+    }
+
+    if ((p_chain[idx] & 0x0f) == p_ && (p_chain[idx] & 0xf0) != 0xf0) {
+      p_chain[idx] += (1 << 4);
+    } else {
+      if (++idx < MAX_CHAIN) {
+        p_chain[idx] = p_ & 0x0f;
+        ++p_chain_len;
+      }
+    }
+
+    return idx;
   }
   void SetLength(uint8_t len) {
     get_sequence().SetLength(len);

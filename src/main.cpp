@@ -318,6 +318,19 @@ void PrintTime() {
 
   PrintPosition(engine.get_time_pos());
 }
+void PrintChain(uint8_t stepidx, bool b_section) {
+  if (0 == engine.p_chain_len) return;
+
+  const uint8_t data = engine.p_chain[stepidx];
+  Leds::Set(OutputIndex(data & 0x7), true);
+  Leds::Set(ACCENT_KEY_LED, !b_section); // A
+  Leds::Set(SLIDE_KEY_LED, b_section);   // B
+
+  Leds::Set(CSHARP_KEY_LED, (data >> 4) & 1);
+  Leds::Set(DSHARP_KEY_LED, (data >> 5) & 1);
+  Leds::Set(FSHARP_KEY_LED, (data >> 6) & 1);
+  Leds::Set(GSHARP_KEY_LED, (data >> 7) & 1);
+}
 
 // --- UI context/mode helpers ---
 void ProcessEdit() {
@@ -491,6 +504,27 @@ void ProcessFunctionMod() {
     if (inputs[SLIDE_KEY].rising()) {
       engine.SetLength(engine.get_length() * 2);
     }
+  } else {
+    // Play Mode
+    static uint8_t step_edit = 0;
+    static bool b_section = false;
+
+    if (inputs[ACCENT_KEY].rising()) b_section = false;
+    if (inputs[SLIDE_KEY].rising()) b_section = true;
+
+    // check keys for quick-chaining patterns
+    uint8_t patsel = 0;
+    for (uint8_t i = 0; i < 8; ++i) {
+      if (inputs[i].rising()) {
+        patsel = i + 1;
+      }
+    }
+
+    if (patsel) {
+      step_edit = engine.AddToChain(patsel - 1 + b_section * 8);
+    }
+
+    PrintChain(step_edit, b_section);
   }
 
   if (inputs[CLEAR_KEY].rising()) // enter system config
