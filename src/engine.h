@@ -356,7 +356,8 @@ struct Engine {
   }
 
   // actions
-  void Load(uint8_t bank) {
+  void Load(uint8_t track) {
+    const uint8_t bank = track >> 1;
     for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
       ReadPattern(pattern[i], i + bank * NUM_PATTERNS);
       if (0 == pattern[i].length || 0xff == pattern[i].length)
@@ -371,7 +372,8 @@ struct Engine {
     Serial.print("\n");
 #endif
   }
-  void Save(uint8_t bank) {
+  void Save(uint8_t track) {
+    const uint8_t bank = track >> 1;
     if (!stale) return;
 #if DEBUG
     Serial.print("Saving to EEPROM... ");

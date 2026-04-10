@@ -32,7 +32,7 @@ static uint8_t transpose_next = 12;
 static PinState inputs[INPUT_COUNT];
 
 static uint8_t tracknum = 0;
-static uint8_t bank_loaded = 0;
+static uint8_t track_loaded = 0;
 static bool step_counter = false;
 static bool midi_clk = false;
 static bool wrap_edit = false;
@@ -711,7 +711,7 @@ void loop() {
   // - when stopping the clock
   if ((inputs[WRITE_MODE].falling() && !clk_run) ||
       (inputs[RUN].falling() && !midi_clk)) {
-    engine.Save(bank_loaded);
+    engine.Save(track_loaded);
   }
 
   if (inputs[RUN].rising()) {
@@ -754,10 +754,10 @@ void loop() {
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2));
 
-  if (!clk_run && (tracknum >> 1) != bank_loaded) {
-    engine.Save(bank_loaded);
-    bank_loaded = tracknum >> 1;
-    engine.Load(bank_loaded);
+  if (!clk_run && (tracknum != track_loaded)) {
+    engine.Save(track_loaded);
+    engine.Load(tracknum);
+    track_loaded = tracknum;
   }
 
   // --- other input handling
