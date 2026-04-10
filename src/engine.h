@@ -529,7 +529,17 @@ struct Engine {
   void SetPattern(uint8_t p_, bool override = false) {
     next_p = p_ & 0xf; // p_ % 16;
     if (override) p_select = next_p;
-    p_chain_len = 0;
+    if (p_chain_len) ToggleChain();
+  }
+  void ToggleChain() {
+    static uint8_t stashedlen = 0;
+    if (0 == p_chain_len) {
+      p_chain_len = stashedlen;
+      stashedlen = 0;
+    } else {
+      stashedlen = p_chain_len;
+      p_chain_len = 0;
+    }
   }
   uint8_t AddToChain(uint8_t p_) {
     static uint8_t idx = 0;

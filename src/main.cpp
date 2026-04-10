@@ -424,6 +424,10 @@ void ProcessDefault(const bool &clear_mod) {
       engine.SetPattern(engine.get_next() % 8, !clk_run); // A
     if (inputs[SLIDE_KEY].rising())
       engine.SetPattern(engine.get_next() % 8 + 8, !clk_run); // B
+
+    if (inputs[ASHARP_KEY].rising())
+      engine.ToggleChain();
+
     break;
   }
 
