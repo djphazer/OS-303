@@ -115,7 +115,7 @@ struct Sequence {
   }
   /// Next pitch step (wrapped) is a slide
   const bool next_is_slide() const {
-    return get_slide((pitch_pos + 1) % length);
+    return next_is_note() && get_slide((pitch_pos + 1) % length);
   }
   /// Current time step is a tie.
   bool is_tie() const {
