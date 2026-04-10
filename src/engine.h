@@ -11,7 +11,7 @@
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
 
 static constexpr int MAX_STEPS = 32;
-static constexpr int MAX_CHAIN = 32;
+static constexpr int MAX_CHAIN = 16;
 static constexpr int NUM_PATTERNS = 16; // per bank; 4 banks in eeprom
 
 enum SequencerMode {
@@ -43,7 +43,7 @@ static constexpr size_t TIME_DATA_SIZE = 1024; // 4-bit time steps
 static constexpr size_t TIME_DATA_OFFSET = PITCH_DATA_OFFSET + PITCH_DATA_SIZE;
 static constexpr size_t PATTERN_DATA_SIZE = 512; // 64 total patterns * 8 bytes
 static constexpr size_t PATTERN_DATA_OFFSET = TIME_DATA_OFFSET + TIME_DATA_SIZE;
-static constexpr size_t TRACK_DATA_SIZE = 6 * 32 * 2;
+static constexpr size_t TRACK_DATA_SIZE = 8 * MAX_CHAIN * 2; // 7 tracks accessible... ;)
 static constexpr size_t TRACK_DATA_OFFSET = PATTERN_DATA_OFFSET + PATTERN_DATA_SIZE;
 
 // and this is what's left...
@@ -317,7 +317,6 @@ struct Engine {
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
 
-
   SequencerMode mode_ = NORMAL_MODE;
 
   int8_t clk_count = -1;
@@ -327,7 +326,7 @@ struct Engine {
   bool stale = false;
   bool resting = false; // hey shutup
 
-  void Init() {
+  inline void Init() {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
 #endif
@@ -343,28 +342,48 @@ struct Engine {
       // TODO: migration from old signatures could happen here instead
 
       // initialize memory with defaults or zeroes
-      for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-        pattern[i].Clear();
-      }
-      GlobalSettings.Save();
+      // for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      //   pattern[i].Clear();
+      // }
       stale = true;
-      Save(0);
+      //Save(0); // store Track 1 / Group I
       // stale = true;
       // Save(1);
       // stale = true;
       // Save(2);
       // stale = true;
       // Save(3);
+
+      GlobalSettings.Save(); // update signature after migrations
     }
   }
 
   // actions
-  void Load(uint8_t track) {
+  inline void Load(uint8_t track) {
     const uint8_t bank = track >> 1;
     for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
       ReadPattern(pattern[i], i + bank * NUM_PATTERNS);
       if (0 == pattern[i].length || 0xff == pattern[i].length)
         pattern[i].Clear();
+    }
+
+    p_chain_len = 0;
+    storage.get(TRACK_DATA_OFFSET + (track * MAX_CHAIN * 2), p_chain);
+    storage.get(TRACK_DATA_OFFSET + (track * MAX_CHAIN * 2) + MAX_CHAIN, t_chain);
+
+    if (0xff == t_chain[0]) {
+      // invalid / uninitialized data
+      memset(p_chain, 0, sizeof(p_chain));
+      memset(t_chain, 0, sizeof(t_chain));
+      return;
+    }
+
+    // length is simply the first t_chain step with the top bit set
+    for (uint8_t i = 0; i < MAX_CHAIN; ++i) {
+      if (t_chain[i] & 0x80) {
+        p_chain_len = i + 1;
+        break;
+      }
     }
 
 #if DEBUG
@@ -375,7 +394,7 @@ struct Engine {
     Serial.print("\n");
 #endif
   }
-  void Save(uint8_t track) {
+  inline void Save(uint8_t track) {
     const uint8_t bank = track >> 1;
     if (!stale) return;
 #if DEBUG
@@ -385,6 +404,17 @@ struct Engine {
     for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
       WritePattern(pattern[i], i + bank * NUM_PATTERNS);
     }
+
+    for (uint8_t i = 0; i < MAX_CHAIN; ++i) {
+      if (p_chain_len == i + 1) {
+        t_chain[i] |= 0x80;
+        break;
+      } else {
+        t_chain[i] &= 0x7f;
+      }
+    }
+    storage.put(TRACK_DATA_OFFSET + (track * MAX_CHAIN * 2), p_chain);
+    storage.put(TRACK_DATA_OFFSET + (track * MAX_CHAIN * 2) + MAX_CHAIN, t_chain);
 
     stale = false;
 #if DEBUG
