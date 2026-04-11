@@ -99,6 +99,7 @@ static void midi_note_off(byte channel, byte pitch, byte velocity) {
   } else {
     midi_live_gate  = false;
     midi_live_slide = false;
+    DAC::SetGate(false);
   }
   dac_stale = true;
 }
@@ -612,6 +613,10 @@ void loop() {
       midi_clk = false;
       DAC::SetGate(false);
       engine.Reset();
+      midi_note_depth = 0;
+      midi_live_gate  = false;
+      midi_live_slide = false;
+      dac_stale = true;
     }
     if (MIDI.getType() == midi::MidiType::ProgramChange) {
       engine.SetPattern(MIDI.getData1(), !clk_run);
