@@ -22,8 +22,8 @@ namespace DAC {
     // send to accent pin
     //digitalWriteFast(PE0_PIN, accent_ ? HIGH : LOW);
 
-    // set 6-bit pitch for CV Out
-    PORTC = pitch_; // & 0x3f;
+    // set 6-bit pitch for CV Out (preserve upper bits for PWM on PC6)
+    PORTC = (PORTC & 0xC0) | (pitch_ & 0x3F);
 
     PORTE = 0; // disable latch
     // set gate and accent pins, enable latch/slide

@@ -262,6 +262,11 @@ void setup() {
   for (uint8_t i = 0; i < ARRAY_SIZE(OUTPUTS); ++i) {
     pinMode(OUTPUTS[i], OUTPUT);
   }
+  // Timer3 fast PWM 8-bit on OC3A (PC6 / PF2_PIN) for filter CV, no prescaler → ~15.6kHz
+  TCCR3A = (1 << COM3A1) | (1 << WGM30);
+  TCCR3B = (1 << WGM32) | (1 << CS30);
+  OCR3A = 0;
+
   for (uint8_t i = 0; i < 4; ++i) {
     digitalWriteFast(select_pin[i], HIGH);
   }
@@ -620,6 +625,11 @@ void loop() {
     }
     if (MIDI.getType() == midi::MidiType::ProgramChange) {
       engine.SetPattern(MIDI.getData1(), !clk_run);
+    }
+    if (MIDI.getType() == midi::MidiType::ControlChange) {
+      if (MIDI.getData1() == 1) { // CC 1 (mod wheel) → filter CV
+        OCR3A = (MIDI.getData2() << 1) | (MIDI.getData2() >> 6);
+      }
     }
   }
 
