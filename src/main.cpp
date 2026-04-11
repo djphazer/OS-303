@@ -48,6 +48,75 @@ static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
 // this is where the magic happens
 static Engine engine;
 
+// ----- MIDI live note input -----
+static constexpr uint8_t MIDI_STACK_SIZE = 8;
+static uint8_t midi_note_stack[MIDI_STACK_SIZE];
+static uint8_t midi_note_vel[MIDI_STACK_SIZE];
+static uint8_t midi_note_depth = 0;
+static uint8_t midi_live_note = 0;
+static bool    midi_live_gate = false;
+static bool    midi_live_accent = false;
+static bool    midi_live_slide = false;
+
+static void midi_stack_push(uint8_t note, uint8_t vel) {
+  for (uint8_t i = 0; i < midi_note_depth; ++i) {
+    if (midi_note_stack[i] == note) {
+      for (uint8_t j = i; j + 1 < midi_note_depth; ++j) {
+        midi_note_stack[j] = midi_note_stack[j + 1];
+        midi_note_vel[j]   = midi_note_vel[j + 1];
+      }
+      --midi_note_depth;
+      break;
+    }
+  }
+  if (midi_note_depth < MIDI_STACK_SIZE) {
+    midi_note_stack[midi_note_depth] = note;
+    midi_note_vel[midi_note_depth]   = vel;
+    ++midi_note_depth;
+  }
+}
+static void midi_stack_remove(uint8_t note) {
+  for (uint8_t i = 0; i < midi_note_depth; ++i) {
+    if (midi_note_stack[i] == note) {
+      for (uint8_t j = i; j + 1 < midi_note_depth; ++j) {
+        midi_note_stack[j] = midi_note_stack[j + 1];
+        midi_note_vel[j]   = midi_note_vel[j + 1];
+      }
+      --midi_note_depth;
+      return;
+    }
+  }
+}
+
+static void midi_note_off(byte channel, byte pitch, byte velocity) {
+  (void)channel; (void)velocity;
+  midi_stack_remove(static_cast<uint8_t>(pitch));
+
+  if (midi_note_depth > 0) {
+    midi_live_note   = midi_note_stack[midi_note_depth - 1];
+    midi_live_accent = (midi_note_vel[midi_note_depth - 1] >= 100);
+    midi_live_slide  = true;
+  } else {
+    midi_live_gate  = false;
+    midi_live_slide = false;
+  }
+  dac_stale = true;
+}
+static void midi_note_on(byte channel, byte pitch, byte velocity) {
+  if (velocity == 0) { midi_note_off(channel, pitch, 0); return; }
+
+  const uint8_t prev = midi_live_note;
+  const bool was_on  = midi_live_gate;
+
+  midi_stack_push(static_cast<uint8_t>(pitch), static_cast<uint8_t>(velocity));
+
+  midi_live_slide  = was_on && (prev != static_cast<uint8_t>(pitch));
+  midi_live_accent = (velocity >= 100);
+  midi_live_gate   = true;
+  midi_live_note   = static_cast<uint8_t>(pitch);
+  dac_stale = true;
+}
+
 // crucial bits tying together the inputs + engine
 
 uint8_t check_pitch_held() {
@@ -183,6 +252,8 @@ extern "C" {
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
+  MIDI.setHandleNoteOn(midi_note_on);
+  MIDI.setHandleNoteOff(midi_note_off);
 
   for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
     pinMode(INPUTS[i], INPUT); // pullup?
@@ -660,15 +731,22 @@ void loop() {
     }
   }
 
-  if (clk_run) {
-    // send sequence step
-    DAC::SetSlide(engine.get_slide());
-    DAC::SetAccent(engine.get_accent());
-    DAC::SetGate(engine.get_gate());
+  if (midi_live_gate) {
+    // Live MIDI note overrides pattern output (stopped or running)
+    const int16_t live_pitch = constrain(int16_t(midi_live_note) - 36, 0, 48);
+    DAC::SetPitch(static_cast<uint8_t>(live_pitch) + 4 + transpose);
+    DAC::SetSlide(midi_live_slide);
+    DAC::SetAccent(midi_live_accent);
+    DAC::SetGate(true);
+  } else {
+    if (clk_run) {
+      // send sequence step
+      DAC::SetSlide(engine.get_slide());
+      DAC::SetAccent(engine.get_accent());
+      DAC::SetGate(engine.get_gate());
+    }
+    DAC::SetPitch(engine.get_pitch() + 4 + transpose);
   }
-  // pitch always comes from the engine
-  // sometimes right after assigning a new pitch to current step while stopped
-  DAC::SetPitch(engine.get_pitch() + 4 + transpose);
 
   // catch falling edge of RUN
   if (inputs[RUN].falling() && !midi_clk) {
