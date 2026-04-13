@@ -210,18 +210,17 @@ struct MatrixPin {
 };
 
 enum SignalState {
-  // 4 bits for debounce
+  // 3 bits for debounce
   STATE_OFF     = 0x00,
-  STATE_RISING  = 0x07,
-  STATE_FALLING = 0x08,
-  STATE_ON      = 0x0f,
+  STATE_RISING  = 0x03,
+  STATE_FALLING = 0x04,
+  STATE_ON      = 0x07,
 };
 struct PinState {
   uint8_t state = 0; // shiftreg
   void push(bool high) {
     state = (state << 1) | high;
   }
-  // using 4-bit rise/fall detection for debounce
   const bool rising() const { return (state & STATE_ON) == STATE_RISING; }
   const bool falling() const { return (state & STATE_ON) == STATE_FALLING; }
   const bool held() const { return (state & STATE_ON) == STATE_ON; }
