@@ -416,7 +416,8 @@ void ProcessEdit() {
   switch (engine.get_mode()) {
   case PITCH_MODE: {
     if (write_mode) {
-      input_pitch(true); // modify pitch
+      bool result = input_pitch(true); // modify pitch
+      if (result) DAC::SetPitch(engine.get_pitch() + transpose);
     }
 
     PrintPitch(engine.get_pitch(), engine.get_accent(), engine.get_slide());
@@ -445,7 +446,9 @@ void ProcessDefault(const bool &clear_mod) {
       const bool check = check_pitch_held();
       DAC::SetGate(check);
       // record new pitch
-      if (!input_pitch(clk_run) && !check) {
+      bool result = input_pitch(clk_run);
+      if (result) DAC::SetPitch(engine.get_pitch() + transpose);
+      if (!result && !check) {
         // kick out after recording last step - only if no input held or rising
         if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
           engine.SetMode(NORMAL_MODE, true);
@@ -790,6 +793,7 @@ void loop() {
       DAC::SetGate(engine.Advance());
       DAC::SetAccent(engine.get_accent());
       DAC::SetSlide(engine.get_slide());
+      DAC::SetPitch(engine.get_pitch() + transpose);
     }
     if (inputs[TAP_NEXT].falling()) {
       DAC::SetGate(false);
@@ -811,8 +815,8 @@ void loop() {
       DAC::SetSlide(engine.get_slide());
       DAC::SetAccent(engine.get_accent());
       DAC::SetGate(engine.get_gate());
+      DAC::SetPitch(engine.get_pitch() + transpose);
     }
-    DAC::SetPitch(engine.get_pitch() + transpose);
   }
 
   // catch falling edge of RUN
