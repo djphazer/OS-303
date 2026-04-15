@@ -659,6 +659,7 @@ void loop() {
       case midi::MidiType::Clock:
         clocked = true;
         break;
+      case midi::MidiType::Continue:
       case midi::MidiType::Start:
         midi_clk = true;
         engine.Reset();
