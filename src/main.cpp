@@ -543,79 +543,86 @@ void ProcessPitchMod() {
   // TODO: other pitch effects?
 }
 
+void ProcessChainMod() {
+  static uint8_t step_edit = 0;
+  static bool b_section = false;
+
+  // check keys for quick-chaining patterns
+  if (inputs[ACCENT_KEY].rising()) b_section = false;
+  if (inputs[SLIDE_KEY].rising()) b_section = true;
+
+  uint8_t patsel = 0;
+  for (uint8_t i = 0; i < 8; ++i) {
+    if (inputs[i].rising()) {
+      patsel = i + 1;
+    }
+  }
+
+  if (patsel) {
+    step_edit = engine.AddToChain(patsel - 1 + b_section * 8);
+  }
+
+  if (inputs[BACK_KEY].rising()) {
+    // undo, step backward
+    engine.AddToChain(-1);
+  }
+
+  PrintChain(step_edit, b_section);
+}
 void ProcessFunctionMod() {
   Leds::Set(FUNCTION_MODE_LED, clk_count & (1 << 2));
 
   if (write_mode) {
-    // show step length on LEDs
-    PrintPosition(engine.get_length() - 1);
+    if (track_mode) {
+      ProcessChainMod();
+    } else { // pattern write mode
+      // show step length on LEDs
+      PrintPosition(engine.get_length() - 1);
 
-    // tap in number of steps
-    if (inputs[DOWN_KEY].rising()) {
-      if (step_counter)
-        step_counter = engine.BumpLength();
-      else {
-        engine.SetLength(1);
-        step_counter = true;
-      }
-    }
-
-    // modify length with pitch keys
-    // pitched_keys vs. pitch_leds
-    uint8_t pitch = check_pitch_inputs();
-    if (pitch--) {
-      uint8_t keyidx = pitch_leds[pitch];
-      if (keyidx < 8)
-        engine.SetLength(1 + (engine.get_length()-1) / 8 * 8 + keyidx);
-      else if (keyidx < 16 && keyidx > 11) {
-        const uint8_t huge = (engine.get_length() - 1) & (1 << 5); // either 32 or 0
-        engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12) + huge);
+      // tap in number of steps
+      if (inputs[DOWN_KEY].rising()) {
+        if (step_counter)
+          step_counter = engine.BumpLength();
+        else {
+          engine.SetLength(1);
+          step_counter = true;
+        }
       }
 
-      if (inputs[ASHARP_KEY].rising())
-        engine.SetLength(1 + (engine.get_length() - 1 + 32) % MAX_STEPS);
-    }
+      // modify length with pitch keys
+      // pitched_keys vs. pitch_leds
+      uint8_t pitch = check_pitch_inputs();
+      if (pitch--) {
+        uint8_t keyidx = pitch_leds[pitch];
+        if (keyidx < 8)
+          engine.SetLength(1 + (engine.get_length()-1) / 8 * 8 + keyidx);
+        else if (keyidx < 16 && keyidx > 11) {
+          const uint8_t huge = (engine.get_length() - 1) & (1 << 5); // either 32 or 0
+          engine.SetLength(1 + (engine.get_length()-1) % 8 + 8 * (keyidx - 12) + huge);
+        }
 
-    if (inputs[UP_KEY].rising()) {
-      // TODO: triplets mode?
-      // I also want variable swing, which is a bit different ...
-      engine.ToggleTriplets();
-    }
+        if (inputs[ASHARP_KEY].rising())
+          engine.SetLength(1 + (engine.get_length() - 1 + 32) % MAX_STEPS);
+      }
 
-    // half
-    if (inputs[ACCENT_KEY].rising()) {
-      engine.SetLength(engine.get_length() / 2);
-    }
-    // double
-    if (inputs[SLIDE_KEY].rising()) {
-      engine.SetLength(engine.get_length() * 2);
+      if (inputs[UP_KEY].rising()) {
+        // TODO: triplets mode?
+        // I also want variable swing, which is a bit different ...
+        engine.ToggleTriplets();
+      }
+
+      // half
+      if (inputs[ACCENT_KEY].rising()) {
+        engine.SetLength(engine.get_length() / 2);
+      }
+      // double
+      if (inputs[SLIDE_KEY].rising()) {
+        engine.SetLength(engine.get_length() * 2);
+      }
     }
   } else {
     // Play Mode
-    static uint8_t step_edit = 0;
-    static bool b_section = false;
-
-    if (inputs[ACCENT_KEY].rising()) b_section = false;
-    if (inputs[SLIDE_KEY].rising()) b_section = true;
-
-    // check keys for quick-chaining patterns
-    uint8_t patsel = 0;
-    for (uint8_t i = 0; i < 8; ++i) {
-      if (inputs[i].rising()) {
-        patsel = i + 1;
-      }
-    }
-
-    if (patsel) {
-      step_edit = engine.AddToChain(patsel - 1 + b_section * 8);
-    }
-
-    if (inputs[BACK_KEY].rising()) {
-      // undo, step backward
-      engine.AddToChain(-1);
-    }
-
-    PrintChain(step_edit, b_section);
+    // TODO: consider temporary vs. persistent chains
   }
 
   if (inputs[CLEAR_KEY].rising()) // enter system config
