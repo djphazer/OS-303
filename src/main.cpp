@@ -654,30 +654,35 @@ void loop() {
 
   // process all MIDI here
   while (MIDI.read()) {
-    if (MIDI.getType() == midi::MidiType::Clock) {
-      clocked = true;
-    }
-    if (MIDI.getType() == midi::MidiType::Start) {
-      midi_clk = true;
-      engine.Reset();
-      clk_count = 0;
-    }
-    if (MIDI.getType() == midi::MidiType::Stop) {
-      midi_clk = false;
-      DAC::SetGate(false);
-      engine.Reset();
-      midi_note_depth = 0;
-      midi_live_gate  = false;
-      midi_live_slide = false;
-      dac_stale = true;
-    }
-    if (MIDI.getType() == midi::MidiType::ProgramChange) {
-      engine.SetPattern(MIDI.getData1(), !clk_run);
-    }
-    if (MIDI.getType() == midi::MidiType::ControlChange) {
-      if (MIDI.getData1() == 1) { // CC 1 (mod wheel) → filter CV
-        OCR3A = (MIDI.getData2() << 1) | (MIDI.getData2() >> 6);
-      }
+    const midi::MidiType type = MIDI.getType();
+    switch (type) {
+      case midi::MidiType::Clock:
+        clocked = true;
+        break;
+      case midi::MidiType::Start:
+        midi_clk = true;
+        engine.Reset();
+        clk_count = 0;
+        break;
+      case midi::MidiType::Stop:
+        midi_clk = false;
+        DAC::SetGate(false);
+        engine.Reset();
+        midi_note_depth = 0;
+        midi_live_gate  = false;
+        midi_live_slide = false;
+        dac_stale = true;
+        break;
+      case midi::MidiType::ProgramChange:
+        engine.SetPattern(MIDI.getData1(), !clk_run);
+        break;
+      case midi::MidiType::ControlChange:
+        if (MIDI.getData1() == 1) { // CC 1 (mod wheel) → filter CV
+          OCR3A = (MIDI.getData2() << 1) | (MIDI.getData2() >> 6);
+        }
+        break;
+
+      default: break;
     }
   }
 
