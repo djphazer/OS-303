@@ -425,12 +425,11 @@ struct Engine {
   void Tick() { }
 
   // returns false for rests
-  bool Advance() {
+  bool Advance(const bool &track_mode) {
     bool result = get_sequence().Advance();
     // jump to next pattern at end of current one
     if (0 == get_sequence().time_pos) {
-      // pattern-chaining active?
-      if (p_chain_len) {
+      if (track_mode && p_chain_len) {
         if (++p_repeats > (p_chain[p_chain_pos] >> 4)) {
           ++p_chain_pos %= p_chain_len;
           p_repeats = 0;
@@ -462,11 +461,11 @@ struct Engine {
   }
 
   // returns true on step advance (clock divide by 6)
-  bool Clock() {
+  bool Clock(const bool &track_mode) {
     ++clk_count %= 6;
 
     if (clk_count == 0) { // sixteenth note advance
-      Advance();
+      Advance(track_mode);
       return true;
     }
 
@@ -558,23 +557,20 @@ struct Engine {
   void SetPattern(uint8_t p_, bool override = false) {
     next_p = p_ & 0xf; // p_ % 16;
     if (override) p_select = next_p;
-    if (p_chain_len) ToggleChain();
   }
-  void ToggleChain() {
-    static uint8_t stashedlen = 0;
-    if (0 == p_chain_len) {
-      p_chain_len = stashedlen;
-      stashedlen = 0;
-    } else {
-      stashedlen = p_chain_len;
-      p_chain_len = 0;
+  uint8_t AddToChain(int8_t p_) {
+    static uint8_t edit_idx = 0;
+    if (p_ < 0) { // delete one
+      if (p_chain[edit_idx] >> 4)
+        p_chain[edit_idx] -= (1 << 4);
+      else if (edit_idx)
+        --edit_idx;
+
+      return edit_idx;
     }
-  }
-  uint8_t AddToChain(uint8_t p_) {
-    static uint8_t idx = 0;
-    if (idx >= MAX_CHAIN) return 0;
+    if (edit_idx >= MAX_CHAIN) return 0;
     if (!p_chain_len) {
-      idx = 0;
+      edit_idx = 0;
       p_chain_pos = 0;
       p_chain_len = 1;
       p_repeats = 0;
@@ -582,16 +578,19 @@ struct Engine {
       return 0;
     }
 
-    if ((p_chain[idx] & 0x0f) == p_ && (p_chain[idx] & 0xf0) != 0xf0) {
-      p_chain[idx] += (1 << 4);
+    if ((p_chain[edit_idx] & 0x0f) == p_ && (p_chain[edit_idx] & 0xf0) != 0xf0) {
+      p_chain[edit_idx] += (1 << 4);
     } else {
-      if (++idx < MAX_CHAIN) {
-        p_chain[idx] = p_ & 0x0f;
+      if (++edit_idx < MAX_CHAIN) {
+        p_chain[edit_idx] = p_ & 0x0f;
         ++p_chain_len;
       }
     }
 
-    return idx;
+    return edit_idx;
+  }
+  void ClearChain() {
+    p_chain_len = 0;
   }
   void SetLength(uint8_t len) {
     get_sequence().SetLength(len);

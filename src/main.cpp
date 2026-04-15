@@ -173,22 +173,22 @@ bool input_pitch(bool mod = false) {
 bool input_time(bool mod = false) {
   bool result = false;
   if (inputs[DOWN_KEY].rising()) {
-    if (!mod) engine.Advance();
+    if (!mod) engine.Advance(track_mode);
     engine.SetTime(1); // note
     result = true;
   }
   if (inputs[UP_KEY].rising()) {
-    if (!mod) engine.Advance();
+    if (!mod) engine.Advance(track_mode);
     engine.SetTime(2); // tie
     result = true;
   }
   if (inputs[ACCENT_KEY].rising()) {
-    if (!mod) engine.Advance();
+    if (!mod) engine.Advance(track_mode);
     engine.SetTime(0); // rest
     result = true;
   }
   if (inputs[SLIDE_KEY].rising()) {
-    if (!mod) engine.Advance();
+    if (!mod) engine.Advance(track_mode);
     engine.SetTime(3); // ????
     result = true;
   }
@@ -483,8 +483,8 @@ void ProcessDefault(const bool &clear_mod) {
     Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3) || (!(engine.get_next() >> 3) && clk_count & 1)); // A
     Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3) || ((engine.get_next() >> 3) && clk_count & 1));   // B
 
-    // indicator for quickchain
-    Leds::Set(ASHARP_KEY_LED, engine.p_chain_len);
+    // indicator for Track Mode (pattern-chaining) enabled
+    Leds::Set(ASHARP_KEY_LED, track_mode);
 
     if (clk_run && write_mode) {
       PrintPosition(engine.get_time_pos());
@@ -504,9 +504,6 @@ void ProcessDefault(const bool &clear_mod) {
       engine.SetPattern(engine.get_next() % 8, !clk_run); // A
     if (inputs[SLIDE_KEY].rising())
       engine.SetPattern(engine.get_next() % 8 + 8, !clk_run); // B
-
-    if (inputs[ASHARP_KEY].rising())
-      engine.ToggleChain();
 
     break;
   }
@@ -614,7 +611,8 @@ void ProcessFunctionMod() {
     }
 
     if (inputs[BACK_KEY].rising()) {
-      // TODO: undo, step backward
+      // undo, step backward
+      engine.AddToChain(-1);
     }
 
     PrintChain(step_edit, b_section);
@@ -786,7 +784,7 @@ void loop() {
   }
 
   if (clocked && clk_run) {
-    if (engine.Clock() && engine.get_time_pos() == 0) {
+    if (engine.Clock(track_mode) && engine.get_time_pos() == 0) {
       // pattern-synced changes here
       transpose = transpose_next;
     }
@@ -797,7 +795,7 @@ void loop() {
     // handle TAP button advance for step editing when stopped
     // With clock running, TAP does nothing - Clock() drives advance
     if (inputs[TAP_NEXT].rising()) {
-      DAC::SetGate(engine.Advance());
+      DAC::SetGate(engine.Advance(track_mode));
       DAC::SetAccent(engine.get_accent());
       DAC::SetSlide(engine.get_slide());
       DAC::SetPitch(engine.get_pitch() + transpose);
