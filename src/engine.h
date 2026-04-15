@@ -66,7 +66,7 @@ struct Sequence {
   // time is stored as nibbles, so there's actually a lot of padding
 
   // this also doubles as the entry point for the metadata
-  uint8_t reserved[METADATA_SIZE - 1]; // compiler won't like this
+  uint8_t reserved[METADATA_SIZE - 1];
   uint8_t length = 16;
   // --- end sequence data
 
@@ -255,12 +255,23 @@ extern Sequence pattern[NUM_PATTERNS]; // enough to hold one bank in RAM
 
 struct PersistentSettings {
   char signature[16];
+  uint8_t flags;
 
   void Load() {
-    storage.get(0, signature);
+    size_t pos = 0;
+
+    storage.get(pos, signature);
+    pos += sizeof(signature);
+
+    flags = storage.read(pos++);
   }
   void Save() {
-    storage.put(0, signature);
+    size_t pos = 0;
+
+    storage.put(pos, signature);
+    pos += sizeof(signature);
+
+    storage.update(pos, flags);
   }
   bool Validate() const {
     if (0 == strncmp(signature, sig_pew, 12))
@@ -274,46 +285,38 @@ struct PersistentSettings {
 extern PersistentSettings GlobalSettings;
 
 inline void WritePattern(Sequence &seq, int idx) {
-  uint8_t *src = seq.pitch;
-  for (uint8_t i = 0; i < PITCH_SIZE; ++i) {
-    storage.update(PITCH_DATA_OFFSET + (idx * PITCH_SIZE) + i, src[i]);
-  }
-  src = seq.time_data;
-  for (uint8_t i = 0; i < TIME_SIZE; ++i) {
-    storage.update(TIME_DATA_OFFSET + (idx * TIME_SIZE) + i, src[i]);
-  }
-  src = seq.reserved;
+  storage.put(PITCH_DATA_OFFSET + (idx * PITCH_SIZE), seq.pitch);
+  storage.put(TIME_DATA_OFFSET + (idx * TIME_SIZE), seq.time_data);
+
+  // metadata is spread over a few different variables - handled here as simple bytes
+  uint8_t *src = seq.reserved;
   for (uint8_t i = 0; i < METADATA_SIZE; ++i) {
     storage.update(PATTERN_DATA_OFFSET + (idx * METADATA_SIZE) + i, src[i]);
   }
 }
 inline void ReadPattern(Sequence &seq, int idx) {
-  uint8_t *dst = seq.pitch;
-  for (uint8_t i = 0; i < PITCH_SIZE; ++i) {
-    dst[i] = storage.read(PITCH_DATA_OFFSET + (idx * PITCH_SIZE) + i);
-  }
-  dst = seq.time_data;
-  for (uint8_t i = 0; i < TIME_SIZE; ++i) {
-    dst[i] = storage.read(TIME_DATA_OFFSET + (idx * TIME_SIZE) + i);
-  }
-  dst = seq.reserved;
+  storage.get(PITCH_DATA_OFFSET + (idx * PITCH_SIZE), seq.pitch);
+  storage.get(TIME_DATA_OFFSET + (idx * TIME_SIZE), seq.time_data);
+
+  uint8_t *dst = seq.reserved;
   for (uint8_t i = 0; i < METADATA_SIZE; ++i) {
     dst[i] = storage.read(PATTERN_DATA_OFFSET + (idx * METADATA_SIZE) + i);
   }
 }
 
 struct Engine {
+  // pattern-chains, aka TRACKS
   uint8_t p_chain[MAX_CHAIN]; // 4-bit p_select | 4-bit repeats
+  uint8_t t_chain[MAX_CHAIN]; // 6-bit transpose progression
+  uint8_t p_chain_len = 0;
   uint8_t p_chain_pos = 0;
   int8_t p_repeats = -1;
-  uint8_t p_chain_len = 0;
+  uint8_t t_chain_pos = 0;
+  bool t_chain_active = false;
 
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
 
-  uint8_t t_chain[MAX_CHAIN]; // 6-bit transpose progression
-  uint8_t t_chain_idx = 0;
-  bool t_chain_active = false;
 
   SequencerMode mode_ = NORMAL_MODE;
 
@@ -389,13 +392,7 @@ struct Engine {
 #endif
   }
 
-  void Tick(uint8_t &state) {
-    // static bool gate_on = 0;
-    // if (gate_on != get_gate()) {
-      // rising or falling
-    // }
-    // gate_on = get_gate();
-  }
+  void Tick() { }
 
   // returns false for rests
   bool Advance() {

@@ -630,7 +630,7 @@ void loop() {
   // Poll all inputs... every single tick
   //if ((ticks & 0x03) == 0)
   PollInputs(inputs);
-  engine.Tick(menu_state);
+  engine.Tick();
 
 #if DEBUG
   if (Serial.available() && Serial.read()) {
