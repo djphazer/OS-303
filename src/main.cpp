@@ -650,9 +650,6 @@ void loop() {
   const bool pitch_mod = inputs[PITCH_KEY].held();
   const bool time_mod = inputs[TIME_KEY].held();
 
-  // Update global clock state
-  clk_run = inputs[RUN].held() || midi_clk;
-
   bool clocked = false;
 
   // process all MIDI here
@@ -663,6 +660,7 @@ void loop() {
     if (MIDI.getType() == midi::MidiType::Start) {
       midi_clk = true;
       engine.Reset();
+      clk_count = 0;
     }
     if (MIDI.getType() == midi::MidiType::Stop) {
       midi_clk = false;
@@ -682,6 +680,9 @@ void loop() {
       }
     }
   }
+
+  // Update global clock state
+  clk_run = inputs[RUN].held() || midi_clk;
 
   // DIN sync clock @ 24ppqn
   if (!midi_clk) {
