@@ -224,6 +224,7 @@ struct PinState {
   const bool rising() const { return (state & STATE_ON) == STATE_RISING; }
   const bool falling() const { return (state & STATE_ON) == STATE_FALLING; }
   const bool held() const { return (state & STATE_ON) == STATE_ON; }
+  const bool off() const { return (state & STATE_ON) == 0; }
   const bool read() const { return state & 1; }
 };
 

@@ -114,20 +114,20 @@ struct Sequence {
     return get_slide(pitch_pos);
   }
   /// Next pitch step (wrapped) is a slide
-  const bool next_is_slide() const {
-    return next_is_note() && get_slide((pitch_pos + 1) % length);
+  const bool next_is_slide(int8_t direction = 1) const {
+    return next_is_note() && get_slide((pitch_pos + length + direction) % length);
   }
   /// Current time step is a tie.
   bool is_tie() const {
     return (time_pos < length) && (time(time_pos) == 2);
   }
   /// Next time step (wrapped) is a tie.
-  bool next_is_tie() const {
-    const uint8_t n = (time_pos + 1) % length;
+  bool next_is_tie(int8_t direction = 1) const {
+    const uint8_t n = (time_pos + length + direction) % length;
     return time(n) == 2;
   }
-  bool next_is_note() const {
-    const uint8_t n = (time_pos + 1) % length;
+  bool next_is_note(int8_t direction = 1) const {
+    const uint8_t n = (time_pos + length + direction) % length;
     return time(n) & 1;
   }
   /// Last tie in a run: on a tie step whose next step is not a tie.
@@ -230,23 +230,25 @@ struct Sequence {
   }
 
   // returns false for rests
-  bool Advance() {
+  bool Advance(int8_t direction = 1) {
     if (reset) {
       reset = false;
       return time(0);
     }
-    ++time_pos %= length;
+    time_pos = (time_pos + length + direction) % length;
     if (time_pos == 0)
       pitch_pos = 0;
     else if (time(time_pos) & 1)
-      ++pitch_pos;
+      pitch_pos = (pitch_pos + length + direction) % length;
     return time(time_pos);
   }
 
   // used in write mode
-  void AdvancePitch() {
-    if (reset) reset = false;
-    else ++pitch_pos %= length;
+  void AdvancePitch(int8_t direction = 1) {
+    if (reset)
+      reset = false;
+    else
+      pitch_pos = (pitch_pos + length + direction) % length;
   }
 };
 
@@ -304,6 +306,12 @@ inline void ReadPattern(Sequence &seq, int idx) {
   }
 }
 
+enum PlaybackDirection : int8_t {
+  PLAY_BACKWARD = -1,
+  PLAY_STOPPED = 0,
+  PLAY_FORWARD = 1
+};
+
 struct Engine {
   // pattern-chains, aka TRACKS
   uint8_t p_chain[MAX_CHAIN]; // 4-bit p_select | 4-bit repeats
@@ -320,6 +328,7 @@ struct Engine {
   SequencerMode mode_ = NORMAL_MODE;
 
   int8_t clk_count = -1;
+  int8_t play_dir = PLAY_FORWARD;
 
   bool gate_hold = false; // tie/slide: hold gate across 16ths (firstpr.com 303 slide / gate)
   bool slide_on = false;
@@ -425,8 +434,8 @@ struct Engine {
   void Tick() { }
 
   // returns false for rests
-  bool Advance(const bool &track_mode) {
-    bool result = get_sequence().Advance();
+  bool Advance(const bool &track_mode, int direction = 1) {
+    bool result = get_sequence().Advance(direction);
     // jump to next pattern at end of current one
     if (0 == get_sequence().time_pos) {
       if (track_mode && p_chain_len) {
@@ -440,7 +449,7 @@ struct Engine {
       if (next_p != p_select) {
         p_select = next_p;
         get_sequence().Reset();
-        result = get_sequence().Advance();
+        result = get_sequence().Advance(direction);
       }
     }
 
@@ -450,7 +459,7 @@ struct Engine {
     if (result) { // -- state transition for new step
       // Gate: held high only when THIS step extends into the next (slide out or tie).
       // Slide: stays high when arriving at a tie, or goes high when arriving at a slide, otherwise, cancel
-      gate_hold = get_sequence().next_is_slide() || get_sequence().next_is_tie();
+      gate_hold = get_sequence().next_is_slide(direction) || get_sequence().next_is_tie(direction);
       slide_on = (slide_on && get_sequence().is_tie()) || get_sequence().get_slide();
     } else { // rest
       slide_on = false;
@@ -460,12 +469,19 @@ struct Engine {
     return result;
   }
 
+  // only for editing pitch steps
+  void AdvancePitch(int direction = 1) {
+    get_sequence().AdvancePitch(direction);
+    slide_on = get_sequence().get_slide();
+    resting = false;
+  }
+
   // returns true on step advance (clock divide by 6)
   bool Clock(const bool &track_mode) {
     ++clk_count %= 6;
 
     if (clk_count == 0) { // sixteenth note advance
-      Advance(track_mode);
+      Advance(track_mode, play_dir);
       return true;
     }
 

@@ -123,7 +123,7 @@ static void midi_note_on(byte channel, byte pitch, byte velocity) {
 
 uint8_t check_pitch_held() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
-    if (inputs[pitched_keys[i]].held()) {
+    if (!inputs[pitched_keys[i]].off()) {
       return i + 1; // <-- watch out for that +1
     }
   }
@@ -140,10 +140,11 @@ uint8_t check_pitch_inputs() {
   return 0;
 }
 bool check_time_inputs() {
-  if (inputs[DOWN_KEY].held()) { return true; }
-  if (inputs[UP_KEY].held()) { return true; }
-  if (inputs[ACCENT_KEY].held()) { return true; }
-  if (inputs[SLIDE_KEY].held()) return true;
+  if (!inputs[DOWN_KEY].off()) { return true; }
+  if (!inputs[UP_KEY].off()) { return true; }
+  if (!inputs[ACCENT_KEY].off()) { return true; }
+  if (!inputs[SLIDE_KEY].off()) return true;
+  if (!inputs[TAP_NEXT].off() || !inputs[BACK_KEY].off()) return true;
   return false;
 }
 bool input_pitch(bool mod = false) {
@@ -159,7 +160,7 @@ bool input_pitch(bool mod = false) {
       if (mod)
         engine.SetPitchSemitone(i);
       else {
-        engine.get_sequence().AdvancePitch();
+        engine.AdvancePitch();
         const uint8_t oct = 1 - inputs[DOWN_KEY].held() + inputs[UP_KEY].held();
         const uint8_t flags = (inputs[ACCENT_KEY].held() << 6) |
                               (inputs[SLIDE_KEY].held() << 7); // | (oct << 4);
@@ -438,14 +439,46 @@ void ProcessDefault(const bool &clear_mod) {
   // record inputs for regular pattern write mode
   const bool pattern_write = (write_mode && !track_mode);
 
+  if (!clk_run) {
+    // Handle TAP/BACK button advance for step editing when stopped.
+    // With clock running, TAP does nothing - Clock() drives advance
+
+    if (inputs[TAP_NEXT].rising() || inputs[BACK_KEY].rising()) {
+      // step forward or back?
+      int dir = inputs[TAP_NEXT].rising() ? 1 : -1;
+      if (engine.get_mode() == PITCH_MODE) {
+        engine.AdvancePitch(dir);
+        DAC::SetGate(true);
+      } else
+        DAC::SetGate(engine.Advance(track_mode, dir));
+      DAC::SetAccent(engine.get_accent());
+      DAC::SetSlide(engine.get_slide());
+      DAC::SetPitch(engine.get_pitch() + transpose);
+    }
+
+    if (inputs[TAP_NEXT].falling() || inputs[BACK_KEY].falling()) {
+      DAC::SetGate(false);
+      if (!wrap_edit && engine.get_time_pos() >= engine.get_length() - 1)
+        engine.SetMode(NORMAL_MODE, true);
+    }
+  }
+
   switch (engine.get_mode()) {
   case PITCH_MODE:
     if (pattern_write) {
-      const bool check = check_pitch_held();
-      DAC::SetGate(check);
+      static bool keyhold = false;
+      const bool check = check_pitch_held() || !inputs[TAP_NEXT].off() || !inputs[BACK_KEY].off();
+      if (check != keyhold) {
+        DAC::SetGate(check);
+        keyhold = check;
+        dac_stale = true;
+      }
       // record new pitch
       bool result = input_pitch(clk_run);
-      if (result) DAC::SetPitch(engine.get_pitch() + transpose);
+      if (!clk_run && result) {
+        DAC::SetPitch(engine.get_pitch() + transpose);
+        dac_stale = true;
+      }
       if (!result && !check) {
         // kick out after recording last step - only if no input held or rising
         if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
@@ -807,22 +840,6 @@ void loop() {
       transpose = transpose_next;
     }
     dac_stale = true;
-  }
-
-  if (!clk_run) {
-    // handle TAP button advance for step editing when stopped
-    // With clock running, TAP does nothing - Clock() drives advance
-    if (inputs[TAP_NEXT].rising()) {
-      DAC::SetGate(engine.Advance(track_mode));
-      DAC::SetAccent(engine.get_accent());
-      DAC::SetSlide(engine.get_slide());
-      DAC::SetPitch(engine.get_pitch() + transpose);
-    }
-    if (inputs[TAP_NEXT].falling()) {
-      DAC::SetGate(false);
-      if (!wrap_edit && engine.get_time_pos() >= engine.get_length() - 1)
-        engine.SetMode(NORMAL_MODE, true);
-    }
   }
 
   if (midi_live_gate) {
