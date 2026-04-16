@@ -561,6 +561,7 @@ struct Engine {
   uint8_t AddToChain(int8_t p_) {
     static uint8_t edit_idx = 0;
     if (p_ < 0 && p_chain_len) { // delete one
+      edit_idx = p_chain_len - 1;
       if (p_chain[edit_idx] >> 4)
         p_chain[edit_idx] -= (1 << 4);
       else if (edit_idx) {
@@ -582,6 +583,7 @@ struct Engine {
       return 0;
     }
 
+    edit_idx = p_chain_len - 1;
     if ((p_chain[edit_idx] & 0x0f) == p_ && (p_chain[edit_idx] & 0xf0) != 0xf0) {
       // increment repeat count for same pitch
       p_chain[edit_idx] += (1 << 4);

@@ -397,9 +397,7 @@ void PrintTime() {
 
   PrintPosition(engine.get_time_pos());
 }
-void PrintChain(uint8_t stepidx, bool b_section) {
-  Leds::Set(ACCENT_KEY_LED, !b_section); // A
-  Leds::Set(SLIDE_KEY_LED, b_section);   // B
+void PrintChain(uint8_t stepidx) {
   if (0 == engine.p_chain_len) return;
 
   const uint8_t data = engine.p_chain[stepidx];
@@ -483,8 +481,14 @@ void ProcessDefault(const bool &clear_mod) {
     Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3) || (!(engine.get_next() >> 3) && clk_count & 1)); // A
     Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3) || ((engine.get_next() >> 3) && clk_count & 1));   // B
 
-    // indicator for Track Mode (pattern-chaining) enabled
-    Leds::Set(ASHARP_KEY_LED, track_mode);
+    if (track_mode) {
+      Leds::Set(ASHARP_KEY_LED, true); // pattern-chaining enabled indicator
+      if (clear_mod && inputs[BACK_KEY].rising()) {
+        engine.ClearChain();
+      }
+
+      PrintChain(engine.p_chain_pos);
+    }
 
     if (clk_run && write_mode) {
       PrintPosition(engine.get_time_pos());
@@ -500,6 +504,7 @@ void ProcessDefault(const bool &clear_mod) {
           engine.SetPattern(patsel, !clk_run);
       }
     }
+
     if (inputs[ACCENT_KEY].rising())
       engine.SetPattern(engine.get_next() % 8, !clk_run); // A
     if (inputs[SLIDE_KEY].rising())
@@ -543,7 +548,7 @@ void ProcessPitchMod() {
   // TODO: other pitch effects?
 }
 
-void ProcessChainMod() {
+void ProcessChainEdit() {
   static uint8_t step_edit = 0;
   static bool b_section = false;
 
@@ -567,14 +572,16 @@ void ProcessChainMod() {
     step_edit = engine.AddToChain(-1);
   }
 
-  PrintChain(step_edit, b_section);
+  Leds::Set(ACCENT_KEY_LED, !b_section); // A
+  Leds::Set(SLIDE_KEY_LED, b_section);   // B
+  PrintChain(step_edit);
 }
 void ProcessFunctionMod() {
   Leds::Set(FUNCTION_MODE_LED, clk_count & (1 << 2));
 
   if (write_mode) {
     if (track_mode) {
-      ProcessChainMod();
+      ProcessChainEdit();
     } else { // pattern write mode
       // show step length on LEDs
       PrintPosition(engine.get_length() - 1);
@@ -622,7 +629,8 @@ void ProcessFunctionMod() {
     }
   } else {
     // Play Mode
-    // TODO: consider temporary vs. persistent chains
+    ProcessChainEdit();
+    // you can still edit here, but it's only temporary...
   }
 
   if (inputs[CLEAR_KEY].rising()) // enter system config
@@ -713,9 +721,9 @@ void loop() {
 
   // Save pattern data - only if clock isn't running, to prevent stuttering
   // - when exiting write mode
-  // - when stopping the clock
+  // - when stopping the clock in write mode
   if ((inputs[WRITE_MODE].falling() && !clk_run) ||
-      (inputs[RUN].falling() && !midi_clk)) {
+      (write_mode && inputs[RUN].falling() && !midi_clk)) {
     engine.Save(track_loaded);
   }
 
@@ -760,7 +768,10 @@ void loop() {
            | (inputs[TRACK_BIT2].held() << 2));
 
   if (!clk_run && (tracknum != track_loaded)) {
-    engine.Save(track_loaded);
+    // this means nothing gets saved if you switch banks in Play Mode...
+    // could enable live-edits that do not persist
+    if (write_mode) engine.Save(track_loaded);
+
     engine.Load(tracknum);
     track_loaded = tracknum;
   }
