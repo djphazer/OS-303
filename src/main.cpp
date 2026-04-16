@@ -243,6 +243,57 @@ void PewPewPew() {
   }
 }
 
+void SplashAnim(bool reverse = false) {
+  const OutputIndex loadingbar[] = {
+    PITCH_MODE_LED, FUNCTION_MODE_LED,
+    C_KEY_LED, CSHARP_KEY_LED,
+    D_KEY_LED, DSHARP_KEY_LED,
+    E_KEY_LED, F_KEY_LED, FSHARP_KEY_LED,
+    G_KEY_LED, GSHARP_KEY_LED,
+    A_KEY_LED, ASHARP_KEY_LED,
+    B_KEY_LED, C_KEY2_LED, DOWN_KEY_LED, UP_KEY_LED,
+    TIME_MODE_LED, ACCENT_KEY_LED, SLIDE_KEY_LED
+  };
+
+  // making progress
+  elapsedMillis timer = 0;
+  const uint8_t len = ARRAY_SIZE(loadingbar);
+
+  if (!reverse) {
+    for (uint8_t i = 0; i < len; ++i) {
+      // clear
+      Leds::Send();
+      Leds::Send();
+
+      Leds::Set(loadingbar[i], true);
+      for (int tail = i; tail > 0 && tail > i-4; --tail) {
+        Leds::Set(loadingbar[tail-1], true);
+      }
+      while (timer < 32) {
+        Leds::Send(false); // don't clear
+        delay(1);
+      }
+      timer = 0;
+    }
+  } else {
+    // backwards progress
+    for (uint8_t i = 0; i < len; ++i) {
+      Leds::Set(loadingbar[len - i], true);
+      for (int tail = len - i; tail < len; ++tail) {
+        Leds::Set(loadingbar[tail-1], true);
+      }
+      while (timer < 50) {
+        Leds::Send(false); // don't clear
+        delay(1);
+      }
+      timer = 0;
+      // clear
+      Leds::Send();
+      Leds::Send();
+    }
+  }
+}
+
 #if DEBUG
 extern "C" {
   static void jumptoboot(void) {
@@ -283,85 +334,7 @@ void setup() {
   Serial.begin(9600);
 #endif
 
-  const OutputIndex loadingbar[] = {
-    PITCH_MODE_LED, FUNCTION_MODE_LED,
-    C_KEY_LED, CSHARP_KEY_LED,
-    D_KEY_LED, DSHARP_KEY_LED,
-    E_KEY_LED, F_KEY_LED, FSHARP_KEY_LED,
-    G_KEY_LED, GSHARP_KEY_LED,
-    A_KEY_LED, ASHARP_KEY_LED,
-    B_KEY_LED, C_KEY2_LED, DOWN_KEY_LED, UP_KEY_LED,
-    TIME_MODE_LED, ACCENT_KEY_LED, SLIDE_KEY_LED
-  };
-
-
-  // once backward
-  /*
-  const MatrixPin ledseq[] = {
-    switched_leds[16 + 2],
-    switched_leds[12],
-    switched_leds[13],
-    switched_leds[14],
-    switched_leds[15],
-    switched_leds[16 + 1],
-    switched_leds[16 + 0],
-    switched_leds[11],
-    switched_leds[10],
-    switched_leds[9],
-    switched_leds[8],
-    switched_leds[7],
-    switched_leds[6],
-    switched_leds[5],
-    switched_leds[4],
-    switched_leds[3],
-    switched_leds[2],
-    switched_leds[1],
-    switched_leds[0],
-  };
-  const int len = ARRAY_SIZE(ledseq);
-  for (uint8_t i = 0; i < len; ++i) {
-    Leds::Set(ledseq[len - i], true);
-    delay(50);
-    Leds::Set(ledseq[len - i], false);
-    delay(10);
-  }
-  */
-
-  // making progress
-  elapsedMillis timer = 0;
-  const uint8_t len = ARRAY_SIZE(loadingbar);
-  for (uint8_t i = 0; i < len; ++i) {
-    // clear
-    Leds::Send();
-    Leds::Send();
-
-    Leds::Set(loadingbar[i], true);
-    for (int tail = i; tail > 0 && tail > i-4; --tail) {
-      Leds::Set(loadingbar[tail-1], true);
-    }
-    while (timer < 32) {
-      Leds::Send(false); // don't clear
-      delay(1);
-    }
-    timer = 0;
-  }
-  // backwards progress
-  /*
-  for (uint8_t i = 0; i < len; ++i) {
-    Leds::Set(loadingbar[len - i], true);
-    for (int tail = len - i; tail < len; ++tail) {
-      Leds::Set(loadingbar[tail-1], true);
-    }
-    while (timer < 50) {
-      Leds::Send(false); // don't clear
-      delay(1);
-    }
-    timer = 0;
-    // clear
-    Leds::Send();
-    Leds::Send();
-  }
-  */
+  SplashAnim();
 
 #if DEBUG
   // 4-octave pewpew test for all 13 semitones
@@ -369,7 +342,10 @@ void setup() {
 #endif
 
   // this might take a while on first boot
-  engine.Init();
+  if (!engine.Init()) {
+    SplashAnim(true); // wax off
+    SplashAnim(false); // wax on
+  }
 }
 
 // --- LED helpers ---

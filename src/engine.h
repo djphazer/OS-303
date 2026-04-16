@@ -278,11 +278,20 @@ struct PersistentSettings {
 
     storage.update(pos, flags);
   }
-  bool Validate() const {
-    if (0 == strncmp(signature, sig_pew, 12))
-      return true;
+  bool Validate() {
+    int sigdiff = strncmp(signature, sig_pew, strlen(sig_pew));
+
+    // exact match
+    if (0 == sigdiff) return true;
+
+    // older version or shorter signature string
+    // if (sigdiff < 0) {
+      // TODO: upgrade migration?
+      // return true;
+    // }
 
     strcpy((char*)signature, sig_pew);
+    flags = 0;
     return false;
   }
 };
@@ -338,36 +347,37 @@ struct Engine {
   bool stale = false;
   bool resting = false; // hey shutup
 
-  inline void Init() {
+  inline bool Init() {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
 #endif
 
-    // TODO: settings and calibration
     GlobalSettings.Load();
     if (GlobalSettings.Validate()) {
       Load(0);
-    } else {
-#if DEBUG
-      Serial.println("EEPROM data invalid, initializing...");
-#endif
-      // TODO: migration from old signatures could happen here instead
-
-      // initialize memory with defaults or zeroes
-      // for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-      //   pattern[i].Clear();
-      // }
-      stale = true;
-      //Save(0); // store Track 1 / Group I
-      // stale = true;
-      // Save(1);
-      // stale = true;
-      // Save(2);
-      // stale = true;
-      // Save(3);
-
-      GlobalSettings.Save(); // update signature after migrations
+      return true;
     }
+
+#if DEBUG
+    Serial.println("EEPROM data invalid, initializing...");
+#endif
+    // TODO: migration from old signatures could happen here instead
+
+    // --- initialize memory with defaults or zeroes
+    // for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+    //   pattern[i].Clear();
+    // }
+    // stale = true;
+    // Save(0); // store Track 1 / Group I
+    // stale = true;
+    // Save(1);
+    // stale = true;
+    // Save(2);
+    // stale = true;
+    // Save(3);
+
+    GlobalSettings.Save(); // update signature after migrations
+    return false;
   }
 
   // actions
