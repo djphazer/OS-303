@@ -645,16 +645,26 @@ void ProcessFunctionMod() {
 }
 
 void ProcessConfigMenu() {
+  static bool stale = false;
   Leds::Set(PITCH_MODE_LED, true);
   Leds::Set(TIME_MODE_LED, true);
 
   for (uint8_t i = 0; i < 8; ++i) {
-    if (inputs[i].rising()) GlobalSettings.flags ^= (1 << i);
+    if (inputs[i].rising()) {
+      GlobalSettings.flags ^= (1 << i);
+      stale = true;
+    }
+
     Leds::Set(OutputIndex(i), GlobalSettings.flags & (1 << i));
   }
 
-  if (inputs[FUNCTION_KEY].rising())
+  if (inputs[FUNCTION_KEY].rising()) {
     menu_state = MENU_NONE;
+    if (stale) {
+      GlobalSettings.Save();
+      stale = false;
+    }
+  }
 }
 
 
@@ -727,15 +737,17 @@ void loop() {
   if (!midi_clk) {
     clocked = inputs[CLOCK].rising();
 
-    // MIDI sync - sent if not already receiving midi clock
-    if (clocked) {
-      MIDI.sendRealTime(midi::Clock);
-    }
-    if (inputs[RUN].rising()) {
-      MIDI.sendRealTime(midi::Start);
-    }
-    if (inputs[RUN].falling()) {
-      MIDI.sendRealTime(midi::Stop);
+    if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {
+      // MIDI sync - sent if not already receiving midi clock
+      if (clocked) {
+        MIDI.sendRealTime(midi::Clock);
+      }
+      if (inputs[RUN].rising()) {
+        MIDI.sendRealTime(midi::Start);
+      }
+      if (inputs[RUN].falling()) {
+        MIDI.sendRealTime(midi::Stop);
+      }
     }
   }
 

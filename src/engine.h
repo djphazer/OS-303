@@ -258,9 +258,19 @@ struct Sequence {
 extern EEPROMClass storage;
 extern Sequence pattern[NUM_PATTERNS]; // enough to hold one bank in RAM
 
+enum SettingsFlags {
+  SETTING_MIDI_RX,
+  SETTING_MIDI_CLOCK_RX,
+  SETTING_MIDI_TX,
+  SETTING_MIDI_CLOCK_TX,
+  // TODO
+};
+
+// SETTINGS_SIZE
 struct PersistentSettings {
   char signature[16];
   uint8_t flags;
+  // TODO: settings? calibration? plenty of room here... like 111 bytes
 
   void Load() {
     size_t pos = 0;
@@ -293,6 +303,12 @@ struct PersistentSettings {
     strcpy((char*)signature, sig_pew);
     flags = 0;
     return false;
+  }
+  const bool Get(SettingsFlags opt) const {
+    return flags & (1 << opt);
+  }
+  void Toggle(SettingsFlags opt) {
+    flags ^= (1 << opt);
   }
 };
 
