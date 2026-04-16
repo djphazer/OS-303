@@ -560,33 +560,38 @@ struct Engine {
   }
   uint8_t AddToChain(int8_t p_) {
     static uint8_t edit_idx = 0;
-    if (p_ < 0) { // delete one
+    if (p_ < 0 && p_chain_len) { // delete one
       if (p_chain[edit_idx] >> 4)
         p_chain[edit_idx] -= (1 << 4);
-      else if (edit_idx)
+      else if (edit_idx) {
         --edit_idx;
+        --p_chain_len;
+      }
 
+      stale = true;
       return edit_idx;
     }
-    if (edit_idx >= MAX_CHAIN) return 0;
+    if (edit_idx >= MAX_CHAIN) return MAX_CHAIN - 1;
     if (!p_chain_len) {
       edit_idx = 0;
       p_chain_pos = 0;
       p_chain_len = 1;
       p_repeats = 0;
       p_chain[0] = p_ & 0x0f;
+      stale = true;
       return 0;
     }
 
     if ((p_chain[edit_idx] & 0x0f) == p_ && (p_chain[edit_idx] & 0xf0) != 0xf0) {
+      // increment repeat count for same pitch
       p_chain[edit_idx] += (1 << 4);
-    } else {
-      if (++edit_idx < MAX_CHAIN) {
-        p_chain[edit_idx] = p_ & 0x0f;
-        ++p_chain_len;
-      }
+    } else if (++edit_idx < MAX_CHAIN) {
+      // set up new step
+      p_chain[edit_idx] = p_ & 0x0f;
+      ++p_chain_len;
     }
 
+    stale = true;
     return edit_idx;
   }
   void ClearChain() {

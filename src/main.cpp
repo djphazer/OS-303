@@ -564,7 +564,7 @@ void ProcessChainMod() {
 
   if (inputs[BACK_KEY].rising()) {
     // undo, step backward
-    engine.AddToChain(-1);
+    step_edit = engine.AddToChain(-1);
   }
 
   PrintChain(step_edit, b_section);
