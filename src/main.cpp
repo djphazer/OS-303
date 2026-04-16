@@ -668,6 +668,19 @@ void ProcessFunctionMod() {
     menu_state = MENU_CONFIG;
 }
 
+void ProcessConfigMenu() {
+  Leds::Set(PITCH_MODE_LED, true);
+  Leds::Set(TIME_MODE_LED, true);
+
+  for (uint8_t i = 0; i < 8; ++i) {
+    if (inputs[i].rising()) GlobalSettings.flags ^= (1 << i);
+    Leds::Set(OutputIndex(i), GlobalSettings.flags & (1 << i));
+  }
+
+  if (inputs[FUNCTION_KEY].rising())
+    menu_state = MENU_NONE;
+}
+
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 void loop() {
@@ -687,7 +700,7 @@ void loop() {
   track_mode = inputs[TRACK_SEL].held();
   write_mode = inputs[WRITE_MODE].held();
   const bool clear_mod = inputs[CLEAR_KEY].held();
-  const bool edit_mode = inputs[TAP_NEXT].held();
+  const bool edit_mode = inputs[TAP_NEXT].held() || inputs[BACK_KEY].held();
 
   // transpose, performance stuff, config menus
   const bool fn_mod = inputs[FUNCTION_KEY].held();
@@ -765,22 +778,30 @@ void loop() {
 
   // -=-=- Process inputs and set LEDs -=-=-
 
-  if (edit_mode) { // holding WRITE/NEXT/TAP
-    ProcessEdit();
-  } else {
-    // Flash lights for modifiers
-    if (pitch_mod) {
-      ProcessPitchMod();
-    } else if (time_mod) {
-      Leds::Set(TIME_MODE_LED, clk_count & (1 << 2));
-      // TODO: performance time effects
-    } else if (fn_mod) {
-      ProcessFunctionMod();
-    } else {
-      ProcessDefault(clear_mod);
-    }
-  }
+  switch (menu_state) {
+    default:
+    case MENU_NONE:
+      if (edit_mode) { // holding WRITE/NEXT/TAP
+        ProcessEdit();
+      } else {
+        // Flash lights for modifiers
+        if (pitch_mod) {
+          ProcessPitchMod();
+        } else if (time_mod) {
+          Leds::Set(TIME_MODE_LED, clk_count & (1 << 2));
+          // TODO: performance time effects
+        } else if (fn_mod) {
+          ProcessFunctionMod();
+        } else {
+          ProcessDefault(clear_mod);
+        }
+      }
+      break;
 
+    case MENU_CONFIG:
+      ProcessConfigMenu();
+      break;
+  }
 
   // show all pressed buttons
   for (uint8_t i = 0; i < 16; ++i) {
