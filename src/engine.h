@@ -560,16 +560,18 @@ struct Engine {
   }
   uint8_t AddToChain(int8_t p_) {
     static uint8_t edit_idx = 0;
-    if (p_ < 0 && p_chain_len) { // delete one
-      edit_idx = p_chain_len - 1;
-      if (p_chain[edit_idx] >> 4)
-        p_chain[edit_idx] -= (1 << 4);
-      else if (edit_idx) {
-        --edit_idx;
-        --p_chain_len;
+    if (p_ < 0) {
+      // delete one
+      if (p_chain_len) {
+        edit_idx = p_chain_len - 1;
+        if (p_chain[edit_idx] >> 4)
+          p_chain[edit_idx] -= (1 << 4);
+        else {
+          --p_chain_len;
+          if (edit_idx) --edit_idx;
+        }
+        stale = true;
       }
-
-      stale = true;
       return edit_idx;
     }
     if (edit_idx >= MAX_CHAIN) return MAX_CHAIN - 1;
