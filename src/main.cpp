@@ -26,8 +26,8 @@ enum MenuState {
 static uint8_t ticks = 0;
 static uint8_t clk_count = 0;
 static uint8_t menu_state = MENU_NONE;
-static uint8_t transpose = 12; // range is 0 to 47
-static uint8_t transpose_next = 12;
+static uint8_t transpose = 0 | (OCTAVE_ZERO << 4); // range is 0 to 47
+static uint8_t transpose_next = 0 | (OCTAVE_ZERO << 4);
 
 static PinState inputs[INPUT_COUNT];
 
@@ -164,7 +164,7 @@ bool input_pitch(bool mod = false) {
         const uint8_t oct = 1 - inputs[DOWN_KEY].held() + inputs[UP_KEY].held();
         const uint8_t flags = (inputs[ACCENT_KEY].held() << 6) |
                               (inputs[SLIDE_KEY].held() << 7); // | (oct << 4);
-        engine.SetPitch(i + 12*oct, flags);
+        engine.SetPitch(i | (oct << 4), flags);
       }
       result = true;
     }
@@ -379,16 +379,14 @@ void PrintPosition(const uint8_t pos) {
   Leds::Set(OutputIndex(CSHARP_KEY_LED + ((pos >> 3) & 0x3)), true);
   Leds::Set(ASHARP_KEY_LED, pos >> 5);
 }
-void PrintPitch(const uint8_t pitch, const bool acc, const bool slide) {
-  // empty step: no LEDs lit — pattern is blank here
-  if (pitch == PITCH_EMPTY) return;
-
-  Leds::Set(pitch_leds[pitch % 12], true);
+void PrintPitch(const uint8_t semi, const uint8_t octave, const bool acc, const bool slide) {
+  if (semi < 13)
+    Leds::Set(pitch_leds[semi], true);
 
   Leds::Set(ACCENT_KEY_LED, acc);
   Leds::Set(SLIDE_KEY_LED, slide);
-  Leds::Set(DOWN_KEY_LED, (pitch / 12) == OCTAVE_DOWN || (pitch / 12) == OCTAVE_DOUBLE_UP);
-  Leds::Set(UP_KEY_LED, (pitch / 12) > OCTAVE_ZERO);
+  Leds::Set(DOWN_KEY_LED, octave == OCTAVE_DOWN || octave == OCTAVE_DOUBLE_UP);
+  Leds::Set(UP_KEY_LED, octave > OCTAVE_ZERO);
 }
 void PrintTime() {
   Leds::Set(DOWN_KEY_LED, engine.get_time() == 1);
@@ -416,10 +414,10 @@ void ProcessEdit() {
   case PITCH_MODE: {
     if (write_mode) {
       bool result = input_pitch(true); // modify pitch
-      if (result) DAC::SetPitch(engine.get_pitch() + transpose);
+      if (result) DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
     }
 
-    PrintPitch(engine.get_pitch(), engine.get_accent(), engine.get_slide());
+    PrintPitch(engine.get_semitone(), engine.get_octave(), engine.get_accent(), engine.get_slide());
     break;
   }
   case TIME_MODE:
@@ -453,7 +451,7 @@ void ProcessDefault(const bool &clear_mod) {
         DAC::SetGate(engine.Advance(track_mode, dir));
       DAC::SetAccent(engine.get_accent());
       DAC::SetSlide(engine.get_slide());
-      DAC::SetPitch(engine.get_pitch() + transpose);
+      DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
     }
 
     if (inputs[TAP_NEXT].falling() || inputs[BACK_KEY].falling()) {
@@ -476,7 +474,7 @@ void ProcessDefault(const bool &clear_mod) {
       // record new pitch
       bool result = input_pitch(clk_run);
       if (!clk_run && result) {
-        DAC::SetPitch(engine.get_pitch() + transpose);
+        DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
         dac_stale = true;
       }
       if (!result && !check) {
@@ -486,7 +484,7 @@ void ProcessDefault(const bool &clear_mod) {
       }
     }
 
-    PrintPitch(engine.get_pitch(), engine.get_accent(), engine.get_slide());
+    PrintPitch(engine.get_semitone(), engine.get_octave(), engine.get_accent(), engine.get_slide());
     if (!write_mode)
       engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
     break;
@@ -554,29 +552,29 @@ void ProcessDefault(const bool &clear_mod) {
   if (pat_clr_flash) Leds::Set(ASHARP_KEY_LED, true);
 }
 void SetTranspose(const uint8_t tr) {
-  transpose_next = constrain(tr, 0, 47);
+  transpose_next = tr;
   if (!clk_run) transpose = transpose_next;
 }
 void ProcessPitchMod() {
   Leds::Set(PITCH_MODE_LED, clk_count & (1 << 2));
-  PrintPitch(transpose, false, false);
+  PrintPitch(transpose & 0x0f, (transpose >> 4) & 0x3, false, false);
+  if (clk_count & (1 << 1))
+    PrintPitch(transpose_next & 0x0f, (transpose_next >> 4) & 0x3, false, false);
 
   // TODO: beat-synced transpose change?
 
   // check pitch keys to set new root note
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (inputs[pitched_keys[i]].rising()) {
-      SetTranspose((transpose / 12) * 12 + i);
+      SetTranspose((transpose_next & 0xf0) + i);
     }
   }
   // check octave keys to jump by 12
-  if (inputs[DOWN_KEY].rising()) {
-    uint8_t oct = constrain(int(transpose) / 12 - 1, 0, 3);
-    SetTranspose((transpose % 12) + oct * 12);
+  if (inputs[DOWN_KEY].rising() && (transpose_next >> 4)) {
+    SetTranspose(transpose_next - (1 << 4));
   }
-  if (inputs[UP_KEY].rising()) {
-    uint8_t oct = constrain(int(transpose) / 12 + 1, 0, 3);
-    SetTranspose((transpose % 12) + oct * 12);
+  if (inputs[UP_KEY].rising() && ((transpose_next >> 4) ^ 0x3)) {
+    SetTranspose(transpose_next + (1 << 4));
   }
   // TODO: other pitch effects?
 }
@@ -845,7 +843,7 @@ void loop() {
   if (midi_live_gate) {
     // Live MIDI note overrides pattern output (stopped or running)
     const int16_t live_pitch = constrain(int16_t(midi_live_note) - 36, 0, 48);
-    DAC::SetPitch(static_cast<uint8_t>(live_pitch) + transpose);
+    DAC::SetPitch(static_cast<uint8_t>(live_pitch) + unpack_pitch(transpose));
     DAC::SetSlide(midi_live_slide);
     DAC::SetAccent(midi_live_accent);
     DAC::SetGate(true);
@@ -855,7 +853,7 @@ void loop() {
       DAC::SetSlide(engine.get_slide());
       DAC::SetAccent(engine.get_accent());
       DAC::SetGate(engine.get_gate());
-      DAC::SetPitch(engine.get_pitch() + transpose);
+      DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
     }
   }
 

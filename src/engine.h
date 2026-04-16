@@ -55,18 +55,22 @@ static_assert(AUX_DATA_SIZE >= 0, "EEPROM OVERFLOW!");
 // retains compatibility with upstream and old versions, etc.
 const char* const sig_pew = "OS-303-v0.5";
 
+static constexpr uint8_t unpack_pitch(uint8_t p) {
+  return (p & 0x0f) + 12*((p >> 4) & 0x3);
+}
+
 struct Sequence {
   //Sequence(uint8_t *p, uint8_t *t) : pitch(p), time_data(t) {}
 
-  // --- sequence data - 128 bytes
-  // for DAC pitch, 0 is a low G#; 4 is lowest C; and middle C is 28
-  // We're gonna store pitch as if the lowest C is 0, so it needs +4 when sent to DAC
-  uint8_t pitch[MAX_STEPS]; // 6-bit Pitch, Accent, and Slide
+  // --- sequence data
+  uint8_t pitch[MAX_STEPS]; // 4-bit Pitch, 2-bit Octave, Accent, and Slide
   uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=??
-  // time is stored as nibbles, so there's actually a lot of padding
+  // time is stored as nibbles
 
   // this also doubles as the entry point for the metadata
-  uint8_t reserved[METADATA_SIZE - 1];
+  uint8_t reserved[METADATA_SIZE - 3];
+  uint8_t transpose = 0;
+  uint8_t engine_select = 0;
   uint8_t length = 16;
   // --- end sequence data
 
@@ -81,14 +85,14 @@ struct Sequence {
 
   // 6-bit pitch, 0 == low C
   const uint8_t get_pitch(uint8_t pos) const {
-    return pitch[pos] & 0x3f;
+    return get_octave(pos) * 12 + get_semitone(pos);
   }
   const uint8_t get_pitch() const {
     if (step_is_empty()) return PITCH_DEFAULT; // silent default, gate will be off
     return get_pitch(pitch_pos);
   }
   const uint8_t get_octave(uint8_t pos) const {
-    return (pitch[pos] & 0x3f) / 12;
+    return (pitch[pos] >> 4) & 0x03;
   }
   const uint8_t get_octave() const {
     if (step_is_empty()) return OCTAVE_ZERO;
@@ -96,13 +100,13 @@ struct Sequence {
   }
   // semitone index (0–11) for LED display. Returns 0xFF if step is unwritten.
   const uint8_t get_semitone(uint8_t pos) const {
-    return get_pitch(pos) % 12;
+    return pitch[pos] & 0x0f;
   }
   const uint8_t get_semitone() const {
     if (step_is_empty()) return PITCH_EMPTY;
-    return get_pitch() % 12;
+    return get_semitone(pitch_pos);
   }
-  const uint8_t get_accent() const {
+  const bool get_accent() const {
     if (step_is_empty()) return 0;
     return pitch[pitch_pos] & (1<<6);
   }
@@ -154,8 +158,7 @@ struct Sequence {
   void SetPitchSemitone(uint8_t p, bool next = 0) {
     init_if_empty(); 
     const uint8_t pos = (pitch_pos + next) % length;
-    pitch[pos] =
-        ((get_octave(pos) * 12 + p) & 0x3f) | (pitch[pos] & 0xc0);
+    pitch[pos] = (p & 0x0f) | (pitch[pos] & 0xf0);
   }
   void SetLength(uint8_t len) {
     length = constrain(len, 1, MAX_STEPS);
@@ -165,16 +168,16 @@ struct Sequence {
   void NudgeOctave(int dir, bool next = 0) {
     const uint8_t pos = (pitch_pos + next) % length;
     int oct = get_octave(pos) + dir;
-    CONSTRAIN(oct, 0, 3);
-    pitch[pos] =
-        ((uint8_t)oct * 12 + get_semitone(pos)) | (pitch[pos] & 0xc0);
+    if (oct < 0) oct = 1;
+    if (oct > 3) oct = 2;
+    pitch[pos] = ((uint8_t)oct << 4) | (pitch[pos] & 0xcf);
   }
   void SetOctave(int oct, bool next = 0) {
     init_if_empty();
-    CONSTRAIN(oct, 0, 3);
     const uint8_t pos = (pitch_pos + next) % length;
-    pitch[pos] =
-        ((uint8_t)oct * 12 + get_semitone(pos)) | (pitch[pos] & 0xc0);
+    if (oct < 0) oct = 1;
+    if (oct > 3) oct = 2;
+    pitch[pos] = ((uint8_t)oct << 4) | (pitch[pos] & 0xcf);
   }
 
   void ToggleSlide(bool next = 0) {
@@ -537,6 +540,9 @@ struct Engine {
     if (resting) return false;
     return get_sequence().get_accent();
   }
+  uint8_t get_octave() const {
+    return get_sequence().get_octave();
+  }
   uint8_t get_semitone() const {
     return get_sequence().get_semitone();
   }
@@ -638,6 +644,7 @@ struct Engine {
     get_sequence().SetPitchSemitone(p, clk_count > 3 && get_sequence().next_is_note());
     stale = true;
   }
+  // p is expected to be already packed as 2-bit octave | 4-bit semitone
   void SetPitch(uint8_t p, uint8_t flags) {
     get_sequence().SetPitch(p, flags, clk_count > 3 && get_sequence().next_is_note());
     stale = true;
