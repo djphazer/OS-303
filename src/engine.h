@@ -53,7 +53,7 @@ static_assert(AUX_DATA_SIZE >= 0, "EEPROM OVERFLOW!");
 // Signature - max 15 characters (+ null terminator)
 // Shorter strings will match longer ones as a prefix, so appending characters
 // retains compatibility with upstream and old versions, etc.
-const char* const sig_pew = "OS-303-v0.5";
+const char* const sig_pew = "OS-303-v0.6";
 
 static constexpr uint8_t unpack_pitch(uint8_t p) {
   return (p & 0x0f) + 12*((p >> 4) & 0x3);
