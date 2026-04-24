@@ -90,6 +90,8 @@ static void midi_stack_remove(uint8_t note) {
 }
 
 static void midi_note_off(byte channel, byte pitch, byte velocity) {
+  if (!GlobalSettings.Get(SETTING_MIDI_RX)) return;
+
   (void)channel; (void)velocity;
   midi_stack_remove(static_cast<uint8_t>(pitch));
 
@@ -105,6 +107,8 @@ static void midi_note_off(byte channel, byte pitch, byte velocity) {
   dac_stale = true;
 }
 static void midi_note_on(byte channel, byte pitch, byte velocity) {
+  if (!GlobalSettings.Get(SETTING_MIDI_RX)) return;
+
   if (velocity == 0) { midi_note_off(channel, pitch, 0); return; }
 
   const uint8_t prev = midi_live_note;
@@ -653,6 +657,8 @@ void ProcessConfigMenu() {
     if (inputs[i].rising()) {
       GlobalSettings.flags ^= (1 << i);
       stale = true;
+
+      if (!GlobalSettings.Get(SETTING_MIDI_CLOCK_RX)) midi_clk = false;
     }
 
     Leds::Set(OutputIndex(i), GlobalSettings.flags & (1 << i));
@@ -698,35 +704,39 @@ void loop() {
   // process all MIDI here
   while (MIDI.read()) {
     const midi::MidiType type = MIDI.getType();
-    switch (type) {
-      case midi::MidiType::Clock:
-        clocked = true;
-        break;
-      case midi::MidiType::Continue:
-      case midi::MidiType::Start:
-        midi_clk = true;
-        engine.Reset();
-        clk_count = 0;
-        break;
-      case midi::MidiType::Stop:
-        midi_clk = false;
-        DAC::SetGate(false);
-        engine.Reset();
-        midi_note_depth = 0;
-        midi_live_gate  = false;
-        midi_live_slide = false;
-        dac_stale = true;
-        break;
-      case midi::MidiType::ProgramChange:
-        engine.SetPattern(MIDI.getData1(), !clk_run);
-        break;
-      case midi::MidiType::ControlChange:
-        if (MIDI.getData1() == 1) { // CC 1 (mod wheel) → filter CV
-          OCR3A = (MIDI.getData2() << 1) | (MIDI.getData2() >> 6);
-        }
-        break;
 
-      default: break;
+    if (GlobalSettings.Get(SETTING_MIDI_CLOCK_RX)) {
+      switch (type) {
+        case midi::MidiType::Clock:
+          clocked = true;
+          break;
+        case midi::MidiType::Continue:
+        case midi::MidiType::Start:
+          midi_clk = true;
+          engine.Reset();
+          clk_count = 0;
+          break;
+        case midi::MidiType::Stop:
+          midi_clk = false;
+          DAC::SetGate(false);
+          engine.Reset();
+          midi_note_depth = 0;
+          midi_live_gate  = false;
+          midi_live_slide = false;
+          dac_stale = true;
+          break;
+        default: break;
+      }
+    }
+
+    if (GlobalSettings.Get(SETTING_MIDI_PC_RX) && type == midi::MidiType::ProgramChange) {
+      engine.SetPattern(MIDI.getData1(), !clk_run);
+    }
+
+    if (type == midi::MidiType::ControlChange) {
+      if (MIDI.getData1() == 1) { // CC 1 (mod wheel) → filter CV
+        OCR3A = (MIDI.getData2() << 1) | (MIDI.getData2() >> 6);
+      }
     }
   }
 
