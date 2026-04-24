@@ -423,8 +423,13 @@ void ProcessEdit() {
     break;
   default: break;
   }
-  if (inputs[BACK_KEY].rising())
+
+  // Reset to Step 0
+  if (inputs[BACK_KEY].rising()) {
     engine.Reset();
+    clk_count = 0;
+    //midi_clk = false;
+  }
 }
 void ProcessDefault(const bool &clear_mod) {
   // record inputs for regular pattern write mode
@@ -722,6 +727,7 @@ void loop() {
     if (GlobalSettings.Get(SETTING_MIDI_CLOCK_RX)) {
       switch (type) {
         case midi::MidiType::Clock:
+          midi_clk = true;
           clocked = true;
           break;
         case midi::MidiType::Continue:
@@ -890,10 +896,11 @@ void loop() {
   }
 
   // catch falling edge of RUN
-  if (inputs[RUN].falling() && !midi_clk) {
+  if (inputs[RUN].falling()) {
     //Serial.println("CLOCK STOPPED");
     DAC::SetGate(false);
     engine.Reset();
+    midi_clk = false; // kill midi sync
   }
 
   ++ticks;
