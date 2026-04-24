@@ -6,6 +6,7 @@
 #pragma once
 #include <Arduino.h>
 #include <EEPROM.h>
+#include "drivers.h"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
@@ -297,14 +298,18 @@ struct PersistentSettings {
     if (0 == sigdiff) return true;
 
     // older version or shorter signature string
-    // if (sigdiff < 0) {
+    if (sigdiff < 0) {
       // TODO: upgrade migration?
-      // return true;
-    // }
+      return true;
+    }
 
+    Clear();
+    return false;
+  }
+  // clear and reset to defaults
+  void Clear() {
     strcpy((char*)signature, sig_pew);
     flags = 0;
-    return false;
   }
   const bool Get(SettingsFlags opt) const {
     return flags & (1 << opt);
@@ -365,13 +370,13 @@ struct Engine {
   bool stale = false;
   bool resting = false; // hey shutup
 
-  inline bool Init() {
+  inline bool Init(const bool reset_memory) {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
 #endif
 
     GlobalSettings.Load();
-    if (GlobalSettings.Validate()) {
+    if (GlobalSettings.Validate() && !reset_memory) {
       Load(0);
       return true;
     }
@@ -381,20 +386,29 @@ struct Engine {
 #endif
     // TODO: migration from old signatures could happen here instead
 
-    // --- initialize memory with defaults or zeroes
-    // for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-    //   pattern[i].Clear();
-    // }
-    // stale = true;
-    // Save(0); // store Track 1 / Group I
-    // stale = true;
-    // Save(1);
-    // stale = true;
-    // Save(2);
-    // stale = true;
-    // Save(3);
+    // shits getting serious, we need to level this place and start fresh
+    Leds::ledstate[0] = 0xff;
+    Leds::ledstate[1] = 0xff;
+    Leds::ledstate[2] = 0xff;
+    Leds::Send(false); // only sends 1/4 of the matrix
 
+    // --- initialize RAM with defaults or zeroes
+    GlobalSettings.Clear();
+    for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
+      pattern[i].Clear();
+    }
+    ClearChain();
+
+    // store cleared RAM to EEPROM in every hole, i mean all 7 tracks
+    // this might take a while, so the LED matrix will reflect progress...
+    for (uint8_t i = 0; i < 7; ++i) {
+      stale = true;
+      Save(i);
+
+      Leds::Send(false);
+    }
     GlobalSettings.Save(); // update signature after migrations
+
     return false;
   }
 
@@ -650,6 +664,8 @@ struct Engine {
   }
   void ClearChain() {
     p_chain_len = 0;
+    memset(p_chain, 0, MAX_CHAIN);
+    memset(t_chain, 0, MAX_CHAIN);
   }
   void SetLength(uint8_t len) {
     get_sequence().SetLength(len);

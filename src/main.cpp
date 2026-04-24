@@ -328,9 +328,12 @@ void setup() {
     digitalWriteFast(select_pin[i], HIGH);
   }
 
-  /* This won't be necessary in production, bootloader runs first */
-#if DEBUG
   PollInputs(inputs);
+  PollInputs(inputs);
+  PollInputs(inputs);
+  PollInputs(inputs);
+#if DEBUG
+  /* This won't be necessary in production, bootloader runs first */
   if (inputs[TAP_NEXT].held()) {
     jumptoboot();
   }
@@ -345,8 +348,10 @@ void setup() {
   PewPewPew();
 #endif
 
+  const bool reset_memory = inputs[FUNCTION_KEY].held() && inputs[CLEAR_KEY].held();
+
   // this might take a while on first boot
-  if (!engine.Init()) {
+  if (!engine.Init(reset_memory)) {
     SplashAnim(true); // wax off
     SplashAnim(false); // wax on
   }
