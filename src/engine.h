@@ -15,12 +15,6 @@ static constexpr int MAX_STEPS = 32;
 static constexpr int MAX_CHAIN = 16;
 static constexpr int NUM_PATTERNS = 16; // per bank; 4 banks in eeprom
 
-enum SequencerMode {
-  NORMAL_MODE,
-  PITCH_MODE,
-  TIME_MODE,
-};
-
 enum OctaveState {
   OCTAVE_DOWN,
   OCTAVE_ZERO,
@@ -360,8 +354,6 @@ struct Engine {
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
 
-  SequencerMode mode_ = NORMAL_MODE;
-
   int8_t clk_count = -1;
   int8_t play_dir = PLAY_FORWARD;
 
@@ -543,10 +535,10 @@ struct Engine {
     p_repeats = -1;
   }
 
-  void Generate() {
-    if (mode_ == PITCH_MODE)
+  void Generate(bool pitch, bool time) {
+    if (pitch)
       get_sequence().RegenPitch();
-    else if (mode_ == TIME_MODE)
+    if (time)
       get_sequence().RegenTime();
   }
 
@@ -555,13 +547,10 @@ struct Engine {
     stale = true;
     if (idx == p_select) {
       Reset();
-      mode_ = NORMAL_MODE;
     }
   }
 
   // getters
-  SequencerMode get_mode() const { return mode_; }
-
   Sequence &get_sequence() { return pattern[p_select]; }
   const Sequence &get_sequence() const { return pattern[p_select]; }
   const Sequence &get_pattern(uint8_t idx) const { return pattern[idx & 0xf]; }
@@ -675,10 +664,6 @@ struct Engine {
     stale = true;
     return get_sequence().BumpLength();
   }
-  void SetMode(SequencerMode m, bool reset = false) {
-    if (reset && m != mode_) Reset();
-    mode_ = m;
-  }
   void NudgeOctave(int dir) {
     get_sequence().NudgeOctave(dir, clk_count > 3);
     stale = true;
@@ -699,15 +684,12 @@ struct Engine {
   }
 
   void ToggleSlide() {
-    if (mode_ == PITCH_MODE) {
-      get_sequence().ToggleSlide(clk_count > 3 && get_sequence().next_is_note());
-      slide_on = get_sequence().get_slide();
-    }
+    get_sequence().ToggleSlide(clk_count > 3 && get_sequence().next_is_note());
+    slide_on = get_sequence().get_slide();
     stale = true;
   }
   void ToggleAccent() {
-    if (mode_ == PITCH_MODE)
-      get_sequence().ToggleAccent(clk_count > 3 && get_sequence().next_is_note());
+    get_sequence().ToggleAccent(clk_count > 3 && get_sequence().next_is_note());
     stale = true;
   }
 

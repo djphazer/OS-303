@@ -17,15 +17,9 @@ EEPROMClass storage;
 PersistentSettings GlobalSettings;
 Sequence pattern[NUM_PATTERNS];
 
-enum MenuState {
-  MENU_NONE,
-  MENU_CONFIG,
-};
-
 // -=-=- Globals -=-=-
 static uint8_t ticks = 0;
 static uint8_t clk_count = 0;
-static uint8_t menu_state = MENU_NONE;
 static uint8_t transpose = 0 | (OCTAVE_ZERO << 4); // range is 0 to 47
 static uint8_t transpose_next = 0 | (OCTAVE_ZERO << 4);
 
@@ -46,8 +40,21 @@ static elapsedMicros dac_timer;
 static elapsedMillis pattern_cleared_flash_timer;
 static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
 
-// this is where the magic happens
 static Engine engine;
+
+// TODO: separate generalized UI class?
+enum UIMode {
+  NORMAL_MODE,
+  PITCH_MODE,
+  TIME_MODE,
+  MENU_CONFIG,
+};
+UIMode mode_ = NORMAL_MODE;
+UIMode get_mode() { return mode_; }
+void SetMode(UIMode m, bool reset = false) {
+  if (reset && m != mode_) engine.Reset();
+  mode_ = m;
+}
 
 // ----- MIDI live note input -----
 static constexpr uint8_t MIDI_STACK_SIZE = 8;
@@ -395,7 +402,7 @@ void PrintChain(uint8_t stepidx) {
 
 // --- UI context/mode helpers ---
 void ProcessEdit() {
-  switch (engine.get_mode()) {
+  switch (get_mode()) {
   case PITCH_MODE: {
     if (write_mode) {
       bool result = input_pitch(true); // modify pitch
@@ -414,6 +421,7 @@ void ProcessEdit() {
   case NORMAL_MODE:
     PrintPosition(engine.get_time_pos());
     break;
+  default: break;
   }
   if (inputs[BACK_KEY].rising())
     engine.Reset();
@@ -429,7 +437,7 @@ void ProcessDefault(const bool &clear_mod) {
     if (inputs[TAP_NEXT].rising() || inputs[BACK_KEY].rising()) {
       // step forward or back?
       int dir = inputs[TAP_NEXT].rising() ? 1 : -1;
-      if (engine.get_mode() == PITCH_MODE) {
+      if (get_mode() == PITCH_MODE) {
         engine.AdvancePitch(dir);
         DAC::SetGate(true);
       } else
@@ -442,11 +450,11 @@ void ProcessDefault(const bool &clear_mod) {
     if (inputs[TAP_NEXT].falling() || inputs[BACK_KEY].falling()) {
       DAC::SetGate(false);
       if (!wrap_edit && engine.get_time_pos() >= engine.get_length() - 1)
-        engine.SetMode(NORMAL_MODE, true);
+        SetMode(NORMAL_MODE, true);
     }
   }
 
-  switch (engine.get_mode()) {
+  switch (get_mode()) {
   case PITCH_MODE:
     if (pattern_write) {
       static bool keyhold = false;
@@ -465,13 +473,13 @@ void ProcessDefault(const bool &clear_mod) {
       if (!result && !check) {
         // kick out after recording last step - only if no input held or rising
         if (!clk_run && engine.get_sequence().pitch_pos >= engine.get_length() - 1)
-          engine.SetMode(NORMAL_MODE, true);
+          SetMode(NORMAL_MODE, true);
       }
     }
 
     PrintPitch(engine.get_semitone(), engine.get_octave(), engine.get_accent(), engine.get_slide());
     if (!write_mode)
-      engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
+      SetMode(NORMAL_MODE); // you're not supposed to be in here
     break;
 
   case TIME_MODE:
@@ -479,13 +487,13 @@ void ProcessDefault(const bool &clear_mod) {
       if (!input_time(clk_run) && !check_time_inputs()) {
         // kick out after recording last step - only if no input held or rising
         if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)
-          engine.SetMode(NORMAL_MODE, true);
+          SetMode(NORMAL_MODE, true);
       }
     }
 
     PrintTime();
     if (!write_mode)
-      engine.SetMode(NORMAL_MODE); // you're not supposed to be in here
+      SetMode(NORMAL_MODE); // you're not supposed to be in here
     break;
 
   case NORMAL_MODE:
@@ -527,13 +535,14 @@ void ProcessDefault(const bool &clear_mod) {
       engine.SetPattern(engine.get_next() % 8 + 8, !clk_run); // B
 
     break;
+  default: break;
   }
 
   // no modifier - show current mode; flash for pattern clear
   const bool pat_clr_flash = pattern_cleared_flash_timer < PATTERN_CLEARED_FLASH_MS;
-  Leds::Set(TIME_MODE_LED, engine.get_mode() == TIME_MODE || pat_clr_flash);
-  Leds::Set(PITCH_MODE_LED, engine.get_mode() == PITCH_MODE || pat_clr_flash);
-  Leds::Set(FUNCTION_MODE_LED, engine.get_mode() == NORMAL_MODE && !pat_clr_flash);
+  Leds::Set(TIME_MODE_LED, get_mode() == TIME_MODE || pat_clr_flash);
+  Leds::Set(PITCH_MODE_LED, get_mode() == PITCH_MODE || pat_clr_flash);
+  Leds::Set(FUNCTION_MODE_LED, get_mode() == NORMAL_MODE && !pat_clr_flash);
   if (pat_clr_flash) Leds::Set(ASHARP_KEY_LED, true);
 }
 void SetTranspose(const uint8_t tr) {
@@ -650,7 +659,7 @@ void ProcessFunctionMod() {
   }
 
   if (inputs[CLEAR_KEY].rising()) // enter system config
-    menu_state = MENU_CONFIG;
+    mode_ = MENU_CONFIG;
 }
 
 void ProcessConfigMenu() {
@@ -670,7 +679,7 @@ void ProcessConfigMenu() {
   }
 
   if (inputs[FUNCTION_KEY].rising()) {
-    menu_state = MENU_NONE;
+    mode_ = NORMAL_MODE;
     if (stale) {
       GlobalSettings.Save();
       stale = false;
@@ -781,9 +790,8 @@ void loop() {
 
   // -=-=- Process inputs and set LEDs -=-=-
 
-  switch (menu_state) {
+  switch (get_mode()) {
     default:
-    case MENU_NONE:
       if (edit_mode) { // holding WRITE/NEXT/TAP
         ProcessEdit();
       } else {
@@ -832,9 +840,9 @@ void loop() {
   }
 
   // --- other input handling
-  if (inputs[TIME_KEY].rising() && write_mode) engine.SetMode(TIME_MODE, !clk_run);
-  if (inputs[PITCH_KEY].rising() && write_mode) engine.SetMode(PITCH_MODE, !clk_run);
-  if (inputs[FUNCTION_KEY].rising()) engine.SetMode(NORMAL_MODE, !clk_run);
+  if (inputs[TIME_KEY].rising() && write_mode) SetMode(TIME_MODE, !clk_run);
+  if (inputs[PITCH_KEY].rising() && write_mode) SetMode(PITCH_MODE, !clk_run);
+  if (inputs[FUNCTION_KEY].rising()) SetMode(NORMAL_MODE, !clk_run);
  
   if (inputs[CLEAR_KEY].rising()) {
     uint8_t clear_pat = 0xFF;
