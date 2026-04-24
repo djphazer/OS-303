@@ -20,6 +20,13 @@ Sequence pattern[NUM_PATTERNS];
 // -=-=- Globals -=-=-
 static uint8_t ticks = 0;
 static uint8_t clk_count = 0;
+// shortcuts for tempo-synced flashers
+#define BEAT_FLASH (clk_count < 12)
+#define SLOW_FLASH (clk_count & (1<<3))
+#define MED_FLASH (clk_count & (1<<2))
+#define FAST_FLASH (clk_count & (1<<1))
+#define SUPER_FLASH (clk_count & 1)
+
 static uint8_t transpose = 0 | (OCTAVE_ZERO << 4); // range is 0 to 47
 static uint8_t transpose_next = 0 | (OCTAVE_ZERO << 4);
 
@@ -503,12 +510,12 @@ void ProcessDefault(const bool &clear_mod) {
 
   case NORMAL_MODE:
     // flash LED for current pattern
-    Leds::Set(OutputIndex(engine.get_patsel() & 0x7), clk_count < 12);
+    Leds::Set(OutputIndex(engine.get_patsel() & 0x7), BEAT_FLASH);
     // solid LED for queued pattern
     if (engine.get_patsel() != engine.get_next())
       Leds::Set(OutputIndex(engine.get_next() & 0x7), true);
-    Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3) || (!(engine.get_next() >> 3) && clk_count & 1)); // A
-    Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3) || ((engine.get_next() >> 3) && clk_count & 1));   // B
+    Leds::Set(ACCENT_KEY_LED, !(engine.get_patsel() >> 3) || (!(engine.get_next() >> 3) && SUPER_FLASH)); // A
+    Leds::Set(SLIDE_KEY_LED, (engine.get_patsel() >> 3) || ((engine.get_next() >> 3) && SUPER_FLASH));   // B
 
     if (track_mode) {
       Leds::Set(ASHARP_KEY_LED, true); // pattern-chaining enabled indicator
@@ -555,9 +562,9 @@ void SetTranspose(const uint8_t tr) {
   if (!clk_run) transpose = transpose_next;
 }
 void ProcessPitchMod() {
-  Leds::Set(PITCH_MODE_LED, clk_count & (1 << 2));
+  Leds::Set(PITCH_MODE_LED, MED_FLASH);
   PrintPitch(transpose & 0x0f, (transpose >> 4) & 0x3, false, false);
-  if (clk_count & (1 << 1))
+  if (FAST_FLASH)
     PrintPitch(transpose_next & 0x0f, (transpose_next >> 4) & 0x3, false, false);
 
   // TODO: beat-synced transpose change?
@@ -607,7 +614,7 @@ void ProcessChainEdit() {
   PrintChain(step_edit);
 }
 void ProcessFunctionMod() {
-  Leds::Set(FUNCTION_MODE_LED, clk_count & (1 << 2));
+  Leds::Set(FUNCTION_MODE_LED, MED_FLASH);
 
   if (write_mode) {
     if (track_mode) {
@@ -671,6 +678,7 @@ void ProcessConfigMenu() {
   static bool stale = false;
   Leds::Set(PITCH_MODE_LED, true);
   Leds::Set(TIME_MODE_LED, true);
+  Leds::Set(FUNCTION_MODE_LED, MED_FLASH);
 
   for (uint8_t i = 0; i < 8; ++i) {
     if (inputs[i].rising()) {
@@ -805,7 +813,7 @@ void loop() {
         if (pitch_mod) {
           ProcessPitchMod();
         } else if (time_mod) {
-          Leds::Set(TIME_MODE_LED, clk_count & (1 << 2));
+          Leds::Set(TIME_MODE_LED, MED_FLASH);
           // TODO: performance time effects
         } else if (fn_mod) {
           ProcessFunctionMod();
