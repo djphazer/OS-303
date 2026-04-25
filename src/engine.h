@@ -135,7 +135,7 @@ struct Sequence {
   }
 
   inline uint8_t time(uint8_t idx) const {
-    return (time_data[idx >> 1] >> (4 * (idx & 1))) & 0xf;
+    return (time_data[idx >> 1] >> (4 * (idx & 1))) & 0x3;
   }
 
   const uint8_t get_time() const { return time(time_pos); }
