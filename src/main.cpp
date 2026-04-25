@@ -105,6 +105,8 @@ static void midi_stack_remove(uint8_t note) {
 
 static void midi_note_off(byte channel, byte pitch, byte velocity) {
   if (!GlobalSettings.Get(SETTING_MIDI_RX)) return;
+  // TODO: channel filter
+  if (channel > 1) return;
 
   (void)channel; (void)velocity;
   midi_stack_remove(static_cast<uint8_t>(pitch));
@@ -122,6 +124,8 @@ static void midi_note_off(byte channel, byte pitch, byte velocity) {
 }
 static void midi_note_on(byte channel, byte pitch, byte velocity) {
   if (!GlobalSettings.Get(SETTING_MIDI_RX)) return;
+  // TODO: channel filter
+  if (channel > 1) return;
 
   if (velocity == 0) { midi_note_off(channel, pitch, 0); return; }
 
