@@ -55,6 +55,8 @@ enum UIMode {
   PITCH_MODE,
   TIME_MODE,
   MENU_CONFIG,
+  MENU_PITCH,
+  MENU_TIME,
 };
 UIMode mode_ = NORMAL_MODE;
 UIMode get_mode() { return mode_; }
@@ -676,8 +678,33 @@ void ProcessFunctionMod() {
 
   if (inputs[CLEAR_KEY].rising()) // enter system config
     mode_ = MENU_CONFIG;
+
+  if (inputs[PITCH_KEY].rising())
+    mode_ = MENU_PITCH;
+
+  if (inputs[TIME_KEY].rising())
+    mode_ = MENU_TIME;
 }
 
+void ProcessTimeMenu() {
+  Leds::Set(PITCH_MODE_LED, true);
+  Leds::Set(TIME_MODE_LED, MED_FLASH);
+  Leds::Set(FUNCTION_MODE_LED, true);
+
+  if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
+
+  // TODO: swing amount, clock division, etc.
+}
+void ProcessPitchMenu() {
+  Leds::Set(PITCH_MODE_LED, MED_FLASH);
+  Leds::Set(TIME_MODE_LED, true);
+  Leds::Set(FUNCTION_MODE_LED, true);
+
+  if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
+
+  // TODO: scale mask for quantization
+  // TODO: arpeggiator direction
+}
 void ProcessConfigMenu() {
   static bool stale = false;
   Leds::Set(PITCH_MODE_LED, true);
@@ -704,6 +731,7 @@ void ProcessConfigMenu() {
   }
 }
 
+// TODO: ISR for polling & LEDs
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 void loop() {
@@ -829,6 +857,12 @@ void loop() {
 
     case MENU_CONFIG:
       ProcessConfigMenu();
+      break;
+    case MENU_PITCH:
+      ProcessPitchMenu();
+      break;
+    case MENU_TIME:
+      ProcessTimeMenu();
       break;
   }
 
