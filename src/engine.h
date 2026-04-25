@@ -199,11 +199,13 @@ struct Sequence {
     return true;
   }
 
-  void RegenTime() {
-    time_data[time_pos] = random();
+  void RegenTimes() {
+    for (auto &t : time_data)
+      t = random(0xff);
   }
-  void RegenPitch() {
-    pitch[pitch_pos] = random();
+  void RegenPitches() {
+    for (auto &p : pitch)
+      p = random(0xff);
   }
 
   void Reset() {
@@ -537,9 +539,9 @@ struct Engine {
 
   void Generate(bool pitch, bool time) {
     if (pitch)
-      get_sequence().RegenPitch();
+      get_sequence().RegenPitches();
     if (time)
-      get_sequence().RegenTime();
+      get_sequence().RegenTimes();
   }
 
   void ClearPattern(uint8_t idx) {

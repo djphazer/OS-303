@@ -472,6 +472,12 @@ void ProcessDefault(const bool &clear_mod) {
     }
   }
 
+  if (pattern_write && clear_mod && inputs[PITCH_KEY].rising())
+    engine.Generate(true, false);
+
+  if (pattern_write && clear_mod && inputs[TIME_KEY].rising())
+    engine.Generate(false, true);
+
   switch (get_mode()) {
   case PITCH_MODE:
     if (pattern_write) {
