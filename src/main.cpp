@@ -481,6 +481,12 @@ void ProcessDefault(const bool &clear_mod) {
   switch (get_mode()) {
   case PITCH_MODE:
     if (pattern_write) {
+      if (clear_mod) {
+        if (inputs[ACCENT_KEY].rising()) engine.ClearAccents();
+        if (inputs[SLIDE_KEY].rising()) engine.ClearSlides();
+        break;
+      }
+
       static bool keyhold = false;
       const bool check = check_pitch_held() || !inputs[TAP_NEXT].off() || !inputs[BACK_KEY].off();
       if (check != keyhold) {
@@ -488,6 +494,7 @@ void ProcessDefault(const bool &clear_mod) {
         keyhold = check;
         dac_stale = true;
       }
+
       // record new pitch
       bool result = input_pitch(clk_run);
       if (!clk_run && result) {
@@ -508,6 +515,14 @@ void ProcessDefault(const bool &clear_mod) {
 
   case TIME_MODE:
     if (pattern_write) {
+      if (clear_mod) {
+        if (inputs[DOWN_KEY].rising()) engine.ClearNotes();
+        if (inputs[UP_KEY].rising()) engine.ClearTies();
+        if (inputs[ACCENT_KEY].rising()) engine.ClearRests();
+        if (inputs[SLIDE_KEY].rising()) engine.ClearRatchets();
+        break;
+      }
+
       if (!input_time(clk_run) && !check_time_inputs()) {
         // kick out after recording last step - only if no input held or rising
         if (!clk_run && engine.get_time_pos() >= engine.get_length() - 1)

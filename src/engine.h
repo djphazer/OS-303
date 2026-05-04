@@ -59,7 +59,7 @@ struct Sequence {
 
   // --- sequence data
   uint8_t pitch[MAX_STEPS]; // 4-bit Pitch, 2-bit Octave, Accent, and Slide
-  uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=??
+  uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=ratchet
   // time is stored as nibbles
 
   // this also doubles as the entry point for the metadata
@@ -549,6 +549,40 @@ struct Engine {
     stale = true;
     if (idx == p_select) {
       Reset();
+    }
+  }
+
+  void ClearAccents() {
+    for (uint8_t &p : get_sequence().pitch) p &= ~(1 << 6);
+  }
+  void ClearSlides() {
+    for (uint8_t &p : get_sequence().pitch) p &= ~(1 << 7);
+  }
+  void ClearRatchets() {
+    // all Ratchets become regular Notes
+    for (uint8_t &t : get_sequence().time_data) {
+      if ((t & 0x3) == 0x3) t ^= 0x2;
+      if ((t >> 4 & 0x3) == 0x3) t ^= (0x2 << 4);
+    }
+  }
+  void ClearTies() {
+    // all Ties become Rests
+    for (uint8_t &t : get_sequence().time_data) {
+      if ((t & 0x3) == 0x2) t ^= 0x2;
+      if ((t >> 4 & 0x3) == 0x2) t ^= (0x2 << 4);
+    }
+  }
+  void ClearRests() {
+    // all Rests become Notes
+    for (uint8_t &t : get_sequence().time_data) {
+      if ((t & 0x3) == 0) t |= 0x1;
+      if ((t >> 4 & 0x3) == 0) t |= (0x1 << 4);
+    }
+  }
+  void ClearNotes() {
+    // reset to all Rests
+    for (uint8_t &t : get_sequence().time_data) {
+      t = 0;
     }
   }
 
