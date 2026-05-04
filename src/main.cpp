@@ -759,6 +759,17 @@ void ProcessConfigMenu() {
   }
 }
 
+void SwitchToTrack() {
+  // this means nothing gets saved if you switch banks in Play Mode...
+  // could enable live-edits that do not persist
+  // Also, this could stutter if you switch while playing in write mode
+  if (write_mode)
+    engine.Save(track_loaded);
+
+  engine.Load(tracknum);
+  track_loaded = tracknum;
+}
+
 // TODO: ISR for polling & LEDs
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -910,13 +921,9 @@ void loop() {
            | (inputs[TRACK_BIT1].held() << 1)
            | (inputs[TRACK_BIT2].held() << 2));
 
+  // TODO: queued track change while clk is running
   if (!clk_run && (tracknum != track_loaded)) {
-    // this means nothing gets saved if you switch banks in Play Mode...
-    // could enable live-edits that do not persist
-    if (write_mode) engine.Save(track_loaded);
-
-    engine.Load(tracknum);
-    track_loaded = tracknum;
+    SwitchToTrack();
   }
 
   // --- other input handling
@@ -948,6 +955,8 @@ void loop() {
     if (engine.Clock(track_mode) && engine.get_time_pos() == 0) {
       // pattern-synced changes here
       transpose = transpose_next;
+      if (tracknum != track_loaded)
+        SwitchToTrack();
     }
     dac_stale = true;
   }
