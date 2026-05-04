@@ -603,6 +603,13 @@ struct Engine {
     qmask ^= (1ul << ix);
     if (!qmask) qmask = 1;
   }
+  void RotateMask(bool right) {
+    if (right) {
+      qmask = ((qmask >> 1) | (qmask << 11)) & 0x0fff;
+    } else {
+      qmask = ((qmask << 1) | (qmask >> 11)) & 0x0fff;
+    }
+  }
 
   // getters
   Sequence &get_sequence() { return pattern[p_select]; }

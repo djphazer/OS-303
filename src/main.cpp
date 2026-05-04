@@ -738,6 +738,9 @@ void ProcessPitchMenu() {
   uint8_t pitch = check_pitch_inputs();
   if (pitch) engine.ToggleMaskBit(pitch - 1);
 
+  if (inputs[DOWN_KEY].rising()) engine.RotateMask(true);
+  if (inputs[UP_KEY].rising()) engine.RotateMask(false);
+
   // TODO: arpeggiator direction
 }
 void ProcessConfigMenu() {
