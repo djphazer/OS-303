@@ -730,7 +730,14 @@ void ProcessPitchMenu() {
 
   if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
 
-  // TODO: scale mask for quantization
+  const uint16_t mask = engine.get_qmask();
+  for (uint8_t i = 0; i < 13; ++i) {
+    Leds::Set(pitch_leds[i], mask & (1ul << i));
+  }
+
+  uint8_t pitch = check_pitch_inputs();
+  if (pitch) engine.ToggleMaskBit(pitch - 1);
+
   // TODO: arpeggiator direction
 }
 void ProcessConfigMenu() {

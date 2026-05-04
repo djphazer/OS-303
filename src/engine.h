@@ -93,7 +93,6 @@ struct Sequence {
     if (step_is_empty()) return OCTAVE_ZERO;
     return get_octave(pitch_pos);
   }
-  // semitone index (0–11) for LED display. Returns 0xFF if step is unwritten.
   const uint8_t get_semitone(uint8_t pos) const {
     return pitch[pos] & 0x0f;
   }
@@ -366,6 +365,8 @@ struct Engine {
 
   Sequence* copy_src = nullptr;
 
+  uint16_t qmask = 0x0fff; // quantizer scale mask
+
   inline bool Init(const bool reset_memory) {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
@@ -598,6 +599,11 @@ struct Engine {
     }
   }
 
+  void ToggleMaskBit(uint8_t ix) {
+    qmask ^= (1ul << ix);
+    if (!qmask) qmask = 1;
+  }
+
   // getters
   Sequence &get_sequence() { return pattern[p_select]; }
   const Sequence &get_sequence() const { return pattern[p_select]; }
@@ -626,7 +632,13 @@ struct Engine {
     return get_sequence().get_semitone();
   }
   uint8_t get_pitch() const {
-    return get_sequence().get_pitch();
+    uint8_t p = get_sequence().get_pitch();
+    if (qmask) {
+      while (!(qmask & (1ul << (p % 12)))) {
+        --p;
+      }
+    }
+    return p;
   }
   // MIDI note number: OCTAVE_DOWN C = 36 (C2), OCTAVE_ZERO C = 48 (C3)
   uint8_t get_midi_note() const {
@@ -652,6 +664,9 @@ struct Engine {
   }
   const uint8_t get_length() const {
     return get_sequence().length;
+  }
+  const uint16_t get_qmask() const {
+    return qmask;
   }
 
   // setters
