@@ -57,7 +57,7 @@ static constexpr uint8_t unpack_pitch(uint8_t p) {
 struct Sequence {
   //Sequence(uint8_t *p, uint8_t *t) : pitch(p), time_data(t) {}
 
-  // --- sequence data
+  // --- sequence data = 32 + 16 + 8 = 56 bytes
   uint8_t pitch[MAX_STEPS]; // 4-bit Pitch, 2-bit Octave, Accent, and Slide
   uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=ratchet
   // time is stored as nibbles
@@ -73,10 +73,10 @@ struct Sequence {
   int pitch_pos, time_pos;
   bool reset; // hold plz
 
-  // void Init(uint8_t *p, uint8_t *t) {
-  //   pitch = p;
-  //   time_data = t;
-  // }
+  Sequence& operator=(const Sequence& src) {
+    memcpy(pitch, src.pitch, sizeof(pitch) + sizeof(time_data) + METADATA_SIZE);
+    return *this;
+  }
 
   // 6-bit pitch, 0 == low C
   const uint8_t get_pitch(uint8_t pos) const {
@@ -364,6 +364,8 @@ struct Engine {
   bool stale = false;
   bool resting = false; // hey shutup
 
+  Sequence* copy_src = nullptr;
+
   inline bool Init(const bool reset_memory) {
 #if DEBUG
     Serial.println("Loading from EEPROM...");
@@ -542,6 +544,16 @@ struct Engine {
       get_sequence().RegenPitches();
     if (time)
       get_sequence().RegenTimes();
+  }
+
+  void Copy() {
+    copy_src = &get_sequence();
+  }
+  void Paste() {
+    if (copy_src && (copy_src != &get_sequence())) {
+      get_sequence() = *copy_src;
+      stale = true;
+    }
   }
 
   void ClearPattern(uint8_t idx) {

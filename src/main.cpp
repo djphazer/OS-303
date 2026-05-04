@@ -553,6 +553,13 @@ void ProcessDefault(const bool &clear_mod) {
       PrintChain(engine.p_chain_pos);
     }
 
+    if (pattern_write && clear_mod) {
+      if (inputs[CSHARP_KEY].rising())
+        engine.Copy();
+      if (inputs[DSHARP_KEY].rising())
+        engine.Paste();
+    }
+
     if (clk_run && write_mode) {
       PrintPosition(engine.get_time_pos());
     }
