@@ -46,10 +46,10 @@ namespace DAC {
 
   inline void SetPitch(uint8_t p) {
     p += 11; // lowest C == 1.00V
-    if (p > 63) // ignore if out of range
-      gate_ = false;
-    else
-      pitch_ = p;
+    while (p > 63)
+      p -= 12;
+
+    pitch_ = p;
   }
   inline void SetGate(bool on) {
     gate_ = on;
