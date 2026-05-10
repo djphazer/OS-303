@@ -477,6 +477,10 @@ struct Engine {
 
   // returns false for rests
   bool Advance(const bool &track_mode, int direction = 1) {
+    // start sliding before advancing
+    // Slide: goes high when leaving a slide, stays high when arriving at a tie, otherwise, cancel
+    slide_on = get_sequence().get_slide() || (slide_on && get_sequence().next_is_tie(direction));
+
     bool result = get_sequence().Advance(direction);
     // jump to next pattern at end of current one
     if (0 == get_sequence().time_pos) {
@@ -500,9 +504,7 @@ struct Engine {
 
     if (result) { // -- state transition for new step
       // Gate: held high only when THIS step extends into the next (slide out or tie).
-      // Slide: stays high when arriving at a tie, or goes high when arriving at a slide, otherwise, cancel
-      gate_hold = get_sequence().next_is_slide(direction) || get_sequence().next_is_tie(direction);
-      slide_on = (slide_on && get_sequence().is_tie()) || get_sequence().get_slide();
+      gate_hold = get_sequence().get_slide() || get_sequence().next_is_tie(direction);
     } else { // rest
       slide_on = false;
       gate_hold = false;
@@ -513,8 +515,8 @@ struct Engine {
 
   // only for editing pitch steps
   void AdvancePitch(int direction = 1) {
-    get_sequence().AdvancePitch(direction);
     slide_on = get_sequence().get_slide();
+    get_sequence().AdvancePitch(direction);
     resting = false;
   }
 
@@ -655,6 +657,9 @@ struct Engine {
     return 36 + semitone + (oct * 12);
   }
   bool get_slide() const {
+    return get_sequence().get_slide();
+  }
+  bool get_slide_dac() const {
     return slide_on;
   }
   uint8_t get_time_pos() const {

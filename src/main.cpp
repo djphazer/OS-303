@@ -461,7 +461,7 @@ void ProcessDefault(const bool &clear_mod) {
       } else
         DAC::SetGate(engine.Advance(track_mode, dir));
       DAC::SetAccent(engine.get_accent());
-      DAC::SetSlide(engine.get_slide());
+      DAC::SetSlide(engine.get_slide_dac());
       DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
     }
 
@@ -981,7 +981,7 @@ void loop() {
   } else {
     if (clk_run) {
       // send sequence step
-      DAC::SetSlide(engine.get_slide());
+      DAC::SetSlide(engine.get_slide_dac());
       DAC::SetAccent(engine.get_accent());
       DAC::SetGate(engine.get_gate());
       DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
