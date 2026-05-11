@@ -71,7 +71,8 @@ struct Sequence {
 
   // state
   int pitch_pos, time_pos;
-  bool reset; // hold plz
+  bool reset;
+  bool reset_pitch;
 
   Sequence& operator=(const Sequence& src) {
     memcpy(pitch, src.pitch, sizeof(pitch) + sizeof(time_data) + METADATA_SIZE);
@@ -211,6 +212,7 @@ struct Sequence {
     pitch_pos = 0;
     time_pos = 0;
     reset = true;
+    reset_pitch = true;
   }
 
   bool pitch_is_empty(uint8_t pos) const { return pitch[pos] == PITCH_EMPTY; }
@@ -232,20 +234,26 @@ struct Sequence {
   bool Advance(int8_t direction = 1) {
     if (reset) {
       reset = false;
-      return time(0);
-    }
-    time_pos = (time_pos + length + direction) % length;
-    if (time_pos == 0)
       pitch_pos = 0;
-    else if (time(time_pos) & 1)
-      pitch_pos = (pitch_pos + length + direction) % length;
+      reset_pitch = true;
+    } else {
+      time_pos = (time_pos + length + direction) % length;
+    }
+
+    if (time_pos == 0) {
+      pitch_pos = 0;
+      reset_pitch = true;
+    }
+    if (time(time_pos) & 1)
+      AdvancePitch(direction);
+
     return time(time_pos);
   }
 
   // used in write mode
   void AdvancePitch(int8_t direction = 1) {
-    if (reset)
-      reset = false;
+    if (reset_pitch)
+      reset_pitch = false;
     else
       pitch_pos = (pitch_pos + length + direction) % length;
   }
