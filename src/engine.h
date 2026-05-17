@@ -26,7 +26,7 @@ static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
 static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
 
 static constexpr size_t PITCH_SIZE = MAX_STEPS;
-static constexpr size_t TIME_SIZE = MAX_STEPS / 2;
+static constexpr size_t TIME_SIZE = MAX_STEPS / 4;
 static constexpr size_t METADATA_SIZE = 8;
 
 // --- EEPROM data layout ( 4K total ) ---
@@ -34,7 +34,7 @@ static constexpr size_t SETTINGS_SIZE = 128; // 16-byte sig + flags + maybe quan
 static constexpr size_t SETTINGS_OFFSET = 0;
 static constexpr size_t PITCH_DATA_SIZE = 2048; // 8-bit pitch steps
 static constexpr size_t PITCH_DATA_OFFSET = SETTINGS_OFFSET + SETTINGS_SIZE;
-static constexpr size_t TIME_DATA_SIZE = 1024; // 4-bit time steps
+static constexpr size_t TIME_DATA_SIZE = 512; // 2-bit time steps
 static constexpr size_t TIME_DATA_OFFSET = PITCH_DATA_OFFSET + PITCH_DATA_SIZE;
 static constexpr size_t PATTERN_DATA_SIZE = 512; // 64 total patterns * 8 bytes
 static constexpr size_t PATTERN_DATA_OFFSET = TIME_DATA_OFFSET + TIME_DATA_SIZE;
@@ -42,13 +42,14 @@ static constexpr size_t TRACK_DATA_SIZE = 8 * MAX_CHAIN * 2; // 7 tracks accessi
 static constexpr size_t TRACK_DATA_OFFSET = PATTERN_DATA_OFFSET + PATTERN_DATA_SIZE;
 
 // and this is what's left...
-static constexpr int AUX_DATA_SIZE = 4096 - (TRACK_DATA_OFFSET + TRACK_DATA_SIZE);
+static constexpr size_t AUX_DATA_OFFSET = TRACK_DATA_OFFSET + TRACK_DATA_SIZE;
+static constexpr int AUX_DATA_SIZE = 4096 - AUX_DATA_OFFSET;
 static_assert(AUX_DATA_SIZE >= 0, "EEPROM OVERFLOW!");
 
 // Signature - max 15 characters (+ null terminator)
 // Shorter strings will match longer ones as a prefix, so appending characters
 // retains compatibility with upstream and old versions, etc.
-const char* const sig_pew = "OS-303-v0.6";
+const char* const sig_pew = "OS-303-v0.8";
 
 static constexpr uint8_t unpack_pitch(uint8_t p) {
   return (p & 0x0f) + 12*((p >> 4) & 0x3);
@@ -58,9 +59,9 @@ struct Sequence {
   //Sequence(uint8_t *p, uint8_t *t) : pitch(p), time_data(t) {}
 
   // --- sequence data = 32 + 16 + 8 = 56 bytes
-  uint8_t pitch[MAX_STEPS]; // 4-bit Pitch, 2-bit Octave, Accent, and Slide
-  uint8_t time_data[MAX_STEPS/2]; // 0=rest, 1=note, 2=tie, 3=ratchet
-  // time is stored as nibbles
+  uint8_t pitch[PITCH_SIZE]; // 4-bit Pitch, 2-bit Octave, Accent, and Slide
+  uint8_t time_data[TIME_SIZE]; // 0=rest, 1=note, 2=tie, 3=ratchet
+  // time is stored as 2-bit cells, 4 steps per byte
 
   // this also doubles as the entry point for the metadata
   uint8_t reserved[METADATA_SIZE - 3];
@@ -135,16 +136,16 @@ struct Sequence {
   }
 
   inline uint8_t time(uint8_t idx) const {
-    return (time_data[idx >> 1] >> (4 * (idx & 1))) & 0x3;
+    return (time_data[idx >> 2] >> (2 * (idx & 0x3))) & 0x3;
   }
 
   const uint8_t get_time() const { return time(time_pos); }
 
   void SetTime(uint8_t t, bool next = 0) {
     const uint8_t pos = (time_pos + next) % length;
-    const uint8_t upper = pos & 1;
-    uint8_t &data = time_data[pos >> 1];
-    data = (~(0x0f << (4 * upper)) & data) | ((t & 0xf) << (4 * upper));
+    const uint8_t upper = pos & 0x3;
+    uint8_t &data = time_data[pos >> 2];
+    data = (~(0x03 << (2 * upper)) & data) | ((t & 0x3) << (2 * upper));
   }
   void SetPitch(uint8_t p, uint8_t flags, bool next = 0) {
     const uint8_t pos = (pitch_pos + next) % length;
@@ -225,7 +226,7 @@ struct Sequence {
   void Clear() {
     for (uint8_t i = 0; i < MAX_STEPS; ++i) {
       pitch[i] = PITCH_DEFAULT;
-      time_data[i>>1] = 0; // all rests
+      time_data[i>>2] = 0; // all rests
     }
     length = 8;
   }
@@ -301,9 +302,57 @@ struct PersistentSettings {
     if (0 == sigdiff) return true;
 
     // older version or shorter signature string
-    if (sigdiff < 0) {
-      // TODO: upgrade migration?
-      return true;
+    if (sigdiff < 0 && signature[10] == '6') {
+      // -= Upgrade Migration! =-
+
+      // turn some lights on, this might take a while
+      Leds::ledstate[0] = 0xff;
+      Leds::ledstate[1] = 0xff;
+      Leds::ledstate[2] = 0xff;
+      Leds::Send(false); // only sends 1/4 of the matrix
+
+      // OS-303-v0.6 -> OS-303-v0.8
+      // Time Data gets packed tighter now: 1024 -> 512 bytes
+      // Everything else gets shifted up by 512 bytes.
+      const size_t chunksize = 32;
+      size_t writepos = TIME_DATA_OFFSET;
+      size_t readpos = TIME_DATA_OFFSET;
+      uint8_t buf[chunksize];
+      uint8_t packed[chunksize/2];
+
+      while (readpos < (TIME_DATA_OFFSET + TIME_DATA_SIZE * 2)) {
+        // get a chunk of the old data
+        storage.get(readpos, buf);
+
+        // repack the bytes
+        for (uint8_t pi = 0; pi < chunksize / 2; ++pi) {
+          packed[pi] = (buf[pi * 2] & 0x3)
+                     | ((buf[pi * 2] >> 2) & 0xc)
+                     | ((buf[pi * 2 + 1] << 4) & 0x30)
+                     | ((buf[pi * 2 + 1] << 2) & 0xc0);
+        }
+
+        // write the new chunk and step forward
+        storage.put(writepos, packed);
+        writepos += chunksize / 2;
+        readpos += chunksize;
+
+        Leds::Send(false);
+      }
+      // shift all remaining bytes of EEPROM
+      while (readpos < 4096) {
+        storage.get(readpos, buf);
+        storage.put(writepos, buf);
+        readpos += chunksize;
+        writepos += chunksize;
+
+        Leds::Send(false);
+      }
+
+      // set new signature and save
+      strcpy((char*)signature, sig_pew);
+      Save();
+      return true; // all good!
     }
 
     Clear();
@@ -584,22 +633,28 @@ struct Engine {
   void ClearRatchets() {
     // all Ratchets become regular Notes
     for (uint8_t &t : get_sequence().time_data) {
-      if ((t & 0x3) == 0x3) t ^= 0x2;
-      if ((t >> 4 & 0x3) == 0x3) t ^= (0x2 << 4);
+      for (uint8_t i = 0; i < 4; ++i) {
+        if ((t >> (2 * i) & 0x3) == 0x3)
+          t ^= (0x2 << (2 * i));
+      }
     }
   }
   void ClearTies() {
     // all Ties become Rests
     for (uint8_t &t : get_sequence().time_data) {
-      if ((t & 0x3) == 0x2) t ^= 0x2;
-      if ((t >> 4 & 0x3) == 0x2) t ^= (0x2 << 4);
+      for (uint8_t i = 0; i < 4; ++i) {
+        if ((t >> (2 * i) & 0x3) == 0x2)
+          t ^= (0x2 << (2 * i));
+      }
     }
   }
   void ClearRests() {
     // all Rests become Notes
     for (uint8_t &t : get_sequence().time_data) {
-      if ((t & 0x3) == 0) t |= 0x1;
-      if ((t >> 4 & 0x3) == 0) t |= (0x1 << 4);
+      for (uint8_t i = 0; i < 4; ++i) {
+        if ((t >> (2 * i) & 0x3) == 0)
+          t |= (0x1 << (2 * i));
+      }
     }
   }
   void ClearNotes() {
