@@ -22,6 +22,7 @@ static uint8_t ticks = 0;
 static uint8_t clk_count = 0;
 // shortcuts for tempo-synced flashers
 #define BEAT_FLASH (clk_count < 12)
+#define DOUBLE_BEAT_FLASH (clk_count % 12 < 6)
 #define SLOW_FLASH (clk_count & (1<<3))
 #define MED_FLASH (clk_count & (1<<2))
 #define FAST_FLASH (clk_count & (1<<1))
@@ -585,11 +586,15 @@ void ProcessDefault(const bool &clear_mod) {
   }
 
   // no modifier - show current mode; flash for pattern clear
-  const bool pat_clr_flash = pattern_cleared_flash_timer < PATTERN_CLEARED_FLASH_MS;
-  Leds::Set(TIME_MODE_LED, get_mode() == TIME_MODE || pat_clr_flash);
-  Leds::Set(PITCH_MODE_LED, get_mode() == PITCH_MODE || pat_clr_flash);
-  Leds::Set(FUNCTION_MODE_LED, get_mode() == NORMAL_MODE && !pat_clr_flash);
-  if (pat_clr_flash) Leds::Set(ASHARP_KEY_LED, true);
+  if (pattern_cleared_flash_timer < PATTERN_CLEARED_FLASH_MS) {
+    Leds::Set(TIME_MODE_LED, true);
+    Leds::Set(PITCH_MODE_LED, true);
+    Leds::Set(ASHARP_KEY_LED, true);
+  } else {
+    Leds::Set(TIME_MODE_LED, get_mode() == TIME_MODE);
+    Leds::Set(PITCH_MODE_LED, get_mode() == PITCH_MODE);
+    Leds::Set(FUNCTION_MODE_LED, get_mode() == NORMAL_MODE && (!clk_run || BEAT_FLASH));
+  }
 }
 void SetTranspose(const uint8_t tr) {
   transpose_next = tr;
