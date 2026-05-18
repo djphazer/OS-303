@@ -41,6 +41,8 @@ static bool wrap_edit = false;
 static bool clk_run = false;
 static bool track_mode;
 static bool write_mode;
+static bool perform_mode;
+static bool beat_reset;
 
 static bool dac_stale = false;
 static elapsedMicros dac_timer;
@@ -565,14 +567,28 @@ void ProcessDefault(const bool &clear_mod) {
       PrintPosition(engine.get_time_pos());
     }
     // Inputs for Pattern Select
-    for (uint8_t i = 0; i < 8; ++i) {
-      if (inputs[i].rising()) {
-        const uint8_t patsel = (engine.get_next() >> 3) * 8 + i;
-        if (clear_mod) {
-          engine.ClearPattern(patsel);
-          pattern_cleared_flash_timer = 0;
-        } else
-          engine.SetPattern(patsel, !clk_run);
+    {
+      bool performing = false;
+      for (uint8_t i = 0; i < 8; ++i) {
+        if (inputs[i].rising()) {
+          const uint8_t patsel = (engine.get_next() >> 3) * 8 + i;
+          if (clear_mod) {
+            engine.ClearPattern(patsel);
+            pattern_cleared_flash_timer = 0;
+          } else {
+            engine.SetPattern(patsel, !clk_run);
+            if (perform_mode) beat_reset = true;
+          }
+        }
+        if (!inputs[i].off()) performing = true;
+      }
+      if (perform_mode && !performing) engine.resting = true; // hey, take a break
+      // TODO: make beat-sync optional
+      // const bool sync_ready = (clk_count == 0); // quarter-note beat sync
+      const bool sync_ready = true; // full 24ppqn resolution
+      if (perform_mode && sync_ready && beat_reset) {
+        beat_reset = false;
+        engine.Reset();
       }
     }
 
@@ -827,6 +843,7 @@ void loop() {
         case midi::MidiType::Continue:
         case midi::MidiType::Start:
           midi_clk = true;
+          if (inputs[CLEAR_KEY].held()) perform_mode = true;
           engine.Reset();
           clk_count = 0;
           break;
@@ -884,6 +901,8 @@ void loop() {
   }
 
   if (inputs[RUN].rising()) {
+    if (inputs[CLEAR_KEY].held()) perform_mode = true;
+    clk_count = 0;
     //Serial.println("CLOCK RUN STARTED");
     engine.Reset();
   }
@@ -966,7 +985,15 @@ void loop() {
     ++clk_count %= 24;
   }
 
-  if (clocked && clk_run) {
+  if (perform_mode) {
+    for (uint8_t i = 0; i < 8; ++i) {
+      if (inputs[i].rising()) {
+      }
+    }
+  }
+
+  const bool performing = !perform_mode || check_pitch_held();
+  if (clocked && clk_run && performing) {
     if (engine.Clock(track_mode) && engine.get_time_pos() == 0) {
       // pattern-synced changes here
       transpose = transpose_next;
@@ -999,6 +1026,7 @@ void loop() {
     DAC::SetGate(false);
     engine.Reset();
     midi_clk = false; // kill midi sync
+    perform_mode = false;
   }
 
   ++ticks;
