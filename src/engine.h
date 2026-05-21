@@ -15,11 +15,11 @@ static constexpr int MAX_STEPS = 32;
 static constexpr int MAX_CHAIN = 16;
 static constexpr int NUM_PATTERNS = 16; // per bank; 4 banks in eeprom
 
-enum OctaveState {
-  OCTAVE_DOWN,
-  OCTAVE_ZERO,
-  OCTAVE_UP,
-  OCTAVE_DOUBLE_UP,
+enum OctaveState : uint8_t {
+  OCTAVE_DOWN = 0x0,
+  OCTAVE_ZERO = 0x1,
+  OCTAVE_UP   = 0x2,
+  OCTAVE_DOUBLE_UP = 0x3,
 };
 
 static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
@@ -263,14 +263,16 @@ struct Sequence {
 extern EEPROMClass storage;
 extern Sequence pattern[NUM_PATTERNS]; // enough to hold one bank in RAM
 
-enum SettingsFlags {
-  SETTING_MIDI_RX,
-  SETTING_MIDI_CLOCK_RX,
-  SETTING_MIDI_TX,
-  SETTING_MIDI_CLOCK_TX,
-  SETTING_MIDI_PC_RX,
-  SETTING_MIDI_PC_TX,
-  // TODO
+// bitmask
+enum SettingsFlags : uint8_t {
+  SETTING_MIDI_RX       = (1 << 0),
+  SETTING_MIDI_CLOCK_RX = (1 << 1),
+  SETTING_MIDI_TX       = (1 << 2),
+  SETTING_MIDI_CLOCK_TX = (1 << 3),
+  SETTING_MIDI_PC_RX    = (1 << 4),
+  SETTING_MIDI_PC_TX    = (1 << 5),
+  SETTING_RESERVED0     = (1 << 6),
+  SETTING_PATTERN_SYNC  = (1 << 7),
 };
 
 // SETTINGS_SIZE
@@ -361,13 +363,13 @@ struct PersistentSettings {
   // clear and reset to defaults
   void Clear() {
     strcpy((char*)signature, sig_pew);
-    flags = 0;
+    flags = SETTING_MIDI_RX | SETTING_MIDI_CLOCK_RX | SETTING_MIDI_CLOCK_TX;
   }
   const bool Get(SettingsFlags opt) const {
-    return flags & (1 << opt);
+    return flags & opt;
   }
   void Toggle(SettingsFlags opt) {
-    flags ^= (1 << opt);
+    flags ^= opt;
   }
 };
 
