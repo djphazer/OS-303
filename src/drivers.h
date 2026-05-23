@@ -15,6 +15,7 @@ namespace DAC {
   static uint8_t slide_ = false;
   static uint8_t accent_ = false;
   static uint8_t gate_ = false;
+  static uint8_t filter_ = 0;
 
   inline void Send() {
     // send to gate pin
@@ -42,8 +43,14 @@ namespace DAC {
     digitalWriteFast(PI1_PIN, HIGH);
     if (!slide) digitalWriteFast(PI1_PIN, LOW);
     */
+
+    // extra filter freq control
+    OCR3A = filter_;
   }
 
+  inline void SetFilter(uint8_t f) {
+    filter_ = f;
+  }
   inline void SetPitch(uint8_t p) {
     p += 11; // lowest C == 1.00V
     while (p > 63)

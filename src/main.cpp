@@ -866,7 +866,8 @@ void loop() {
 
     if (type == midi::MidiType::ControlChange) {
       if (MIDI.getData1() == 1) { // CC 1 (mod wheel) → filter CV
-        OCR3A = (MIDI.getData2() << 1) | (MIDI.getData2() >> 6);
+        DAC::SetFilter( (MIDI.getData2() << 1) | (MIDI.getData2() >> 6) );
+        dac_stale = true;
       }
     }
   }
