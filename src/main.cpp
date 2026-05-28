@@ -584,8 +584,10 @@ void ProcessDefault(const bool &clear_mod) {
       }
       if (perform_mode && !performing) engine.resting = true; // hey, take a break
       // TODO: make beat-sync optional
-      // const bool sync_ready = (clk_count == 0); // quarter-note beat sync
-      const bool sync_ready = true; // full 24ppqn resolution
+      // const bool sync_ready = true; // full 24ppqn resolution
+      const bool sync_ready = GlobalSettings.Get(SETTING_PATTERN_SYNC)
+                            ? (clk_count == 0) // quarter-note beat sync
+                            : (clk_count % 6 == 0); // step sync
       if (perform_mode && sync_ready && beat_reset) {
         beat_reset = false;
         engine.Reset();
@@ -843,12 +845,16 @@ void loop() {
         case midi::MidiType::Continue:
         case midi::MidiType::Start:
           midi_clk = true;
+          clk_run = true;
+          if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           if (inputs[CLEAR_KEY].held()) perform_mode = true;
           engine.Reset();
           clk_count = 0;
           break;
         case midi::MidiType::Stop:
           midi_clk = false;
+          clk_run = false;
+          if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           DAC::SetGate(false);
           engine.Reset();
           midi_note_depth = 0;
@@ -872,24 +878,20 @@ void loop() {
     }
   }
 
-  // Update global clock state
-  clk_run = inputs[RUN].held() || midi_clk;
-
   // DIN sync clock @ 24ppqn
   if (!midi_clk) {
     clocked = inputs[CLOCK].rising();
+  }
 
-    if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {
-      // MIDI sync - sent if not already receiving midi clock
-      if (clocked) {
-        MIDI.sendRealTime(midi::Clock);
-      }
-      if (inputs[RUN].rising()) {
-        MIDI.sendRealTime(midi::Start);
-      }
-      if (inputs[RUN].falling()) {
-        MIDI.sendRealTime(midi::Stop);
-      }
+  if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {
+    if (clocked) {
+      MIDI.sendRealTime(midi::Clock);
+    }
+    if (inputs[RUN].rising()) {
+      MIDI.sendRealTime(midi::Start);
+    }
+    if (inputs[RUN].falling()) {
+      MIDI.sendRealTime(midi::Stop);
     }
   }
 
@@ -903,6 +905,7 @@ void loop() {
 
   if (inputs[RUN].rising()) {
     if (inputs[CLEAR_KEY].held()) perform_mode = true;
+    clk_run = true;
     clk_count = 0;
     //Serial.println("CLOCK RUN STARTED");
     engine.Reset();
@@ -1027,6 +1030,7 @@ void loop() {
     DAC::SetGate(false);
     engine.Reset();
     midi_clk = false; // kill midi sync
+    clk_run = false;
     perform_mode = false;
   }
 
