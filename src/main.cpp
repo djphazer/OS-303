@@ -582,7 +582,10 @@ void ProcessDefault(const bool &clear_mod) {
         }
         if (!inputs[i].off()) performing = true;
       }
-      if (perform_mode && !performing) engine.resting = true; // hey, take a break
+      if (perform_mode && !performing) {
+        engine.resting = true; // hey, take a break
+        dac_stale = true;
+      }
     }
 
     if (inputs[ACCENT_KEY].rising())
@@ -617,11 +620,20 @@ void ProcessPitchMod() {
 
   // TODO: beat-synced transpose change?
 
+  bool performing = false;
   // check pitch keys to set new root note
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (inputs[pitched_keys[i]].rising()) {
       SetTranspose((transpose_next & 0xf0) + i);
+      if (perform_mode) {
+        beat_reset = true;
+      }
     }
+    if (!inputs[i].off()) performing = true;
+  }
+  if (perform_mode && !performing) {
+    engine.resting = true; // hey, take a break
+    dac_stale = true;
   }
   // check octave keys to jump by 12
   if (inputs[DOWN_KEY].rising() && (transpose_next >> 4)) {
