@@ -279,6 +279,7 @@ enum SettingsFlags : uint8_t {
 struct PersistentSettings {
   char signature[16];
   uint8_t flags;
+  uint16_t qmask;
   // TODO: settings? calibration? plenty of room here... like 111 bytes
 
   void Load() {
@@ -288,6 +289,9 @@ struct PersistentSettings {
     pos += sizeof(signature);
 
     flags = storage.read(pos++);
+
+    storage.get(pos, qmask);
+    pos += sizeof(qmask);
   }
   void Save() {
     size_t pos = 0;
@@ -295,7 +299,10 @@ struct PersistentSettings {
     storage.put(pos, signature);
     pos += sizeof(signature);
 
-    storage.update(pos, flags);
+    storage.update(pos++, flags);
+
+    storage.put(pos, qmask);
+    pos += sizeof(qmask);
   }
   bool Validate() {
     int sigdiff = strncmp(signature, sig_pew, strlen(sig_pew));
@@ -667,14 +674,14 @@ struct Engine {
   }
 
   void ToggleMaskBit(uint8_t ix) {
-    qmask ^= (1ul << ix);
-    if (!qmask) qmask = 1;
+    GlobalSettings.qmask ^= (1ul << ix);
+    if (!GlobalSettings.qmask) GlobalSettings.qmask = 1;
   }
   void RotateMask(bool right) {
     if (right) {
-      qmask = ((qmask >> 1) | (qmask << 11)) & 0x0fff;
+      GlobalSettings.qmask = ((GlobalSettings.qmask >> 1) | (GlobalSettings.qmask << 11)) & 0x0fff;
     } else {
-      qmask = ((qmask << 1) | (qmask >> 11)) & 0x0fff;
+      GlobalSettings.qmask = ((GlobalSettings.qmask << 1) | (GlobalSettings.qmask >> 11)) & 0x0fff;
     }
   }
 
@@ -707,9 +714,12 @@ struct Engine {
   }
   uint8_t get_pitch() const {
     uint8_t p = get_sequence().get_pitch();
-    if (qmask) {
-      while (!(qmask & (1ul << (p % 12)))) {
-        --p;
+    if (GlobalSettings.qmask) { // eliminates the 0 case
+      // check current pitch against quantizer mask
+      while (!(GlobalSettings.qmask & (1ul << (p % 12)))) {
+        // not valid!
+        --p; // round down
+        // TODO: walk both ways
       }
     }
     return p;
@@ -743,7 +753,7 @@ struct Engine {
     return get_sequence().length;
   }
   const uint16_t get_qmask() const {
-    return qmask;
+    return GlobalSettings.qmask;
   }
 
   // setters

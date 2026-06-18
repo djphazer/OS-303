@@ -922,6 +922,8 @@ void loop() {
 
   // -=-=- Process inputs and set LEDs -=-=-
 
+  uint8_t pitchhold = check_pitch_held();
+
   switch (get_mode()) {
     default:
       if (edit_mode) { // holding WRITE/NEXT/TAP
@@ -943,12 +945,15 @@ void loop() {
 
     case MENU_CONFIG:
       ProcessConfigMenu();
+      pitchhold = 0;
       break;
     case MENU_PITCH:
       ProcessPitchMenu();
+      pitchhold = 0;
       break;
     case MENU_TIME:
       ProcessTimeMenu();
+      pitchhold = 0;
       break;
   }
 
@@ -963,7 +968,7 @@ void loop() {
   }
 
   // actual engine Clock
-  const bool performing = !perform_mode || (check_pitch_held() && !beat_reset);
+  const bool performing = !perform_mode || (pitchhold && !beat_reset);
   if (clocked && clk_run && performing) {
     if (engine.Clock(track_mode)) {
       const bool sync_to_pattern = GlobalSettings.Get(SETTING_PATTERN_SYNC);
