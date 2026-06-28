@@ -21,7 +21,8 @@ Sequence pattern[NUM_PATTERNS];
 static uint8_t ticks = 0;
 static uint8_t clk_count = 0;
 // shortcuts for tempo-synced flashers
-#define BEAT_FLASH (clk_count < 12)
+#define CLOCK_CYCLE (clk_count % 24)
+#define BEAT_FLASH (CLOCK_CYCLE < 12)
 #define DOUBLE_BEAT_FLASH (clk_count % 12 < 6)
 #define SLOW_FLASH (clk_count & (1<<3))
 #define MED_FLASH (clk_count & (1<<2))
@@ -41,8 +42,11 @@ static bool wrap_edit = false;
 static bool clk_run = false;
 static bool track_mode;
 static bool write_mode;
+
 static bool perform_mode;
 static bool beat_reset;
+static uint8_t sync_setting = 0;
+static constexpr uint8_t STEP_TICKS[] = {6, 12, 24, 48, 96, 192};
 
 static bool dac_stale = false;
 static elapsedMicros dac_timer;
@@ -447,6 +451,11 @@ void ProcessEdit() {
     midi_clk = false; // reset midi sync
   }
 }
+
+void BeatReset() {
+  const bool sync_to_pattern = GlobalSettings.Get(SETTING_PATTERN_SYNC);
+  if (perform_mode || sync_to_pattern) beat_reset = true;
+}
 void ProcessDefault(const bool &clear_mod) {
   // record inputs for regular pattern write mode
   const bool pattern_write = (write_mode && !track_mode);
@@ -577,7 +586,7 @@ void ProcessDefault(const bool &clear_mod) {
             pattern_cleared_flash_timer = 0;
           } else {
             engine.SetPattern(patsel, !clk_run);
-            if (perform_mode) beat_reset = true;
+            BeatReset();
           }
         }
         if (!inputs[i].off()) performing = true;
@@ -588,10 +597,25 @@ void ProcessDefault(const bool &clear_mod) {
       }
     }
 
-    if (inputs[ACCENT_KEY].rising())
+    if (inputs[ASHARP_KEY].rising()) GlobalSettings.Toggle(SETTING_PATTERN_SYNC);
+    if (!track_mode && !write_mode && GlobalSettings.Get(SETTING_PATTERN_SYNC)) {
+      // sync setting - 1, 2, 4, or 8 steps
+      Leds::Set(OutputIndex(CSHARP_KEY_LED + (sync_setting & 0x3)), true);
+
+      if (inputs[CSHARP_KEY].rising()) sync_setting = 0;
+      if (inputs[DSHARP_KEY].rising()) sync_setting = 1;
+      if (inputs[FSHARP_KEY].rising()) sync_setting = 2;
+      if (inputs[GSHARP_KEY].rising()) sync_setting = 3;
+    }
+
+    if (inputs[ACCENT_KEY].rising()) {
       engine.SetPattern(engine.get_next() % 8, !clk_run); // A
-    if (inputs[SLIDE_KEY].rising())
+      BeatReset();
+    }
+    if (inputs[SLIDE_KEY].rising()) {
       engine.SetPattern(engine.get_next() % 8 + 8, !clk_run); // B
+      BeatReset();
+    }
 
     break;
   default: break;
@@ -617,8 +641,6 @@ void ProcessPitchMod() {
   PrintPitch(transpose & 0x0f, (transpose >> 4) & 0x3, false, false);
   if (FAST_FLASH)
     PrintPitch(transpose_next & 0x0f, (transpose_next >> 4) & 0x3, false, false);
-
-  // TODO: beat-synced transpose change?
 
   bool performing = false;
   // check pitch keys to set new root note
@@ -970,10 +992,9 @@ void loop() {
   }
 
   // --- Sync'd Reset (step or quarter note)
-  // const bool sync_ready = true; // full 24ppqn resolution
   const bool sync_ready = GlobalSettings.Get(SETTING_PATTERN_SYNC)
-                        ? (clk_count == 0) // quarter-note beat sync
-                        : (clk_count % 6 == 0); // step sync
+                          ? (clk_count % STEP_TICKS[sync_setting] == 0) // step sync
+                          : true; // immediate, full resolution
   if (sync_ready && beat_reset) {
     beat_reset = false;
     engine.Reset();
@@ -998,7 +1019,7 @@ void loop() {
 
   // increment clock counter after everything else
   if (clocked) {
-    ++clk_count %= 24;
+    ++clk_count %= 192; // rollover at 32 steps
   }
 
   // show all pressed buttons
