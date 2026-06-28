@@ -16,7 +16,7 @@ def after_build(source, target, env):
 
     app = env.subst(".pio/build/app/firmware.hex")
     boot = env.subst(".pio/build/bootloader/firmware.hex")
-    out = env.subst("${PROGNAME}.hex")
+    out = env.subst("build/${PROGNAME}.hex")
 
     platform = env.PioPlatform()
     subprocess.call([join(platform.get_package_dir("tool-sreccat") or "", "srec_cat"), app, "-Intel", boot, "-Intel", "-o", out, "-Intel"])

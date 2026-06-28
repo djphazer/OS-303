@@ -21,7 +21,7 @@ def make_syx(target, source, env):
 
 git_rev = get_git_rev()
 progname = f"OS-303_v%s_{git_rev}" % env.GetProjectOption("custom_project_version")
-syx_path = os.path.join(env["PROJECT_DIR"], f"{progname}.syx")
+syx_path = os.path.join(env["PROJECT_DIR"], f"build/{progname}.syx")
 
 # Command node: always rebuild the .syx regardless of whether the .hex changed.
 # AlwaysBuild marks it unconditionally out-of-date every run.
