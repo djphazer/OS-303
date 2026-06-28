@@ -750,11 +750,11 @@ void ProcessTimeMenu() {
   // TODO: swing amount, clock division, etc.
 }
 void ProcessPitchMenu() {
+  static bool stale = false;
+
   Leds::Set(PITCH_MODE_LED, MED_FLASH);
   Leds::Set(TIME_MODE_LED, true);
   Leds::Set(FUNCTION_MODE_LED, true);
-
-  if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
 
   const uint16_t mask = engine.get_qmask();
   for (uint8_t i = 0; i < 13; ++i) {
@@ -762,12 +762,24 @@ void ProcessPitchMenu() {
   }
 
   uint8_t pitch = check_pitch_inputs();
-  if (pitch) engine.ToggleMaskBit(pitch - 1);
+  if (pitch) {
+    engine.ToggleMaskBit(pitch - 1);
+    stale = true;
+  }
 
   if (inputs[DOWN_KEY].rising()) engine.RotateMask(true);
   if (inputs[UP_KEY].rising()) engine.RotateMask(false);
 
   // TODO: arpeggiator direction
+
+  // exit path
+  if (inputs[FUNCTION_KEY].rising()) {
+    mode_ = NORMAL_MODE;
+    if (stale) {
+      GlobalSettings.Save();
+      stale = false;
+    }
+  }
 }
 void ProcessConfigMenu() {
   static bool stale = false;
