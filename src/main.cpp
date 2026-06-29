@@ -576,12 +576,12 @@ void ProcessDefault(const bool &clear_mod) {
       PrintPosition(engine.get_time_pos());
     }
     // Inputs for Pattern Select
-    {
+    if (!track_mode) {
       bool performing = false;
       for (uint8_t i = 0; i < 8; ++i) {
         if (inputs[i].rising()) {
           const uint8_t patsel = (engine.get_next() >> 3) * 8 + i;
-          if (clear_mod) {
+          if (clear_mod && write_mode) {
             engine.ClearPattern(patsel);
             pattern_cleared_flash_timer = 0;
           } else {
