@@ -23,7 +23,7 @@ enum OctaveState : uint8_t {
 };
 
 static constexpr uint8_t PITCH_EMPTY = 0xFF; // unwritten step sentinel
-static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO*12); // clean default: C, octave zero, no flags
+static constexpr uint8_t PITCH_DEFAULT = (OCTAVE_ZERO << 4); // clean default: C, octave zero, no flags
 
 static constexpr size_t PITCH_SIZE = MAX_STEPS;
 static constexpr size_t TIME_SIZE = MAX_STEPS / 4;
@@ -458,18 +458,20 @@ struct Engine {
     // --- initialize RAM with defaults or zeroes
     GlobalSettings.Clear();
     for (uint8_t i = 0; i < NUM_PATTERNS; ++i) {
-      pattern[i].Clear();
+      ClearPattern(i, i == 0); // demo in pattern 1
     }
     ClearChain();
 
     // store cleared RAM to EEPROM in every hole, i mean all 7 tracks
     // this might take a while, so the LED matrix will reflect progress...
-    for (uint8_t i = 0; i < 7; ++i) {
+    for (uint8_t i = 1; i < 7; ++i) {
       stale = true;
       Save(i);
+      if (i == 1) ClearPattern(0); // no demo after Track 2
 
       Leds::Send(false);
     }
+
     GlobalSettings.Save(); // update signature after migrations
 
     return false;
@@ -625,8 +627,22 @@ struct Engine {
     }
   }
 
-  void ClearPattern(uint8_t idx) {
+  void ClearPattern(uint8_t idx, bool demo = false) {
     pattern[idx].Clear();
+
+    if (demo) {
+      // A DEMO PATTERN for testing
+      // -------------------------
+      pattern[idx].SetLength(8);
+      pattern[idx].time_data[0] = 0x55; // 4 notes
+      pattern[idx].time_data[1] = 0x55; // 4 notes
+      pattern[idx].pitch[4] = 0x07; // G, oct down
+      pattern[idx].pitch[5] = 0x07; // G, oct down
+      pattern[idx].pitch[6] = 0x0a; // A#, oct down
+      pattern[idx].pitch[7] = 0x0a; // A#, oct down
+      // -------------------------
+    }
+
     stale = true;
     if (idx == p_select) {
       Reset();
@@ -714,12 +730,14 @@ struct Engine {
   }
   uint8_t get_pitch() const {
     uint8_t p = get_sequence().get_pitch();
+    uint8_t pp = p;
     if (GlobalSettings.qmask) { // eliminates the 0 case
       // check current pitch against quantizer mask
-      while (!(GlobalSettings.qmask & (1ul << (p % 12)))) {
-        // not valid!
+      while (p) {
+        if (GlobalSettings.qmask & (1ul << (p % 12))) return p;
+        if (GlobalSettings.qmask & (1ul << (pp % 12))) return pp;
         --p; // round down
-        // TODO: walk both ways
+        ++pp; // round up
       }
     }
     return p;
