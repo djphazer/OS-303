@@ -47,7 +47,9 @@ namespace DAC {
 
     PORTE = 0; // disable latch
     // set gate and accent pins, enable latch/slide
-    PORTE = (gate_ << 1) | (accent_ << 6) | 0x1;
+    PORTE = (gate_ << 1) | (accent_ << 6);
+    //delayMicroseconds(1); // we might need this if the CPU is too fast
+    PORTE |= 0x1; // latch on
     //delayMicroseconds(10); // make sure the latch stays on long enough?
     if (!slide_) // turn slide bit back off
       PORTE ^= 0x1;
