@@ -337,6 +337,9 @@ extern "C" {
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
+  // MIDI Library enables full software Thru by default. Clock and transport
+  // are forwarded explicitly below, so leaving Thru enabled duplicates them.
+  MIDI.turnThruOff();
   MIDI.setHandleNoteOn(midi_note_on);
   MIDI.setHandleNoteOff(midi_note_off);
 
@@ -882,6 +885,7 @@ void loop() {
         case midi::MidiType::Clock:
           midi_clk = true;
           clocked = true;
+          if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           break;
         case midi::MidiType::Continue:
         case midi::MidiType::Start:
@@ -922,12 +926,12 @@ void loop() {
   // DIN sync clock @ 24ppqn
   if (!midi_clk) {
     clocked = inputs[CLOCK].rising();
+    if (clocked && GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {
+      MIDI.sendRealTime(midi::Clock);
+    }
   }
 
   if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {
-    if (clocked) {
-      MIDI.sendRealTime(midi::Clock);
-    }
     if (inputs[RUN].rising()) {
       MIDI.sendRealTime(midi::Start);
     }
