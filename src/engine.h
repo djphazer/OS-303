@@ -426,7 +426,6 @@ struct Engine {
 
   bool gate_hold = false; // tie/slide: hold gate across 16ths (firstpr.com 303 slide / gate)
   bool slide_on = false;
-  bool stale = false;
   bool resting = false; // hey shutup
 
   Sequence* copy_src = nullptr;
@@ -465,7 +464,6 @@ struct Engine {
     // store cleared RAM to EEPROM in every hole, i mean all 7 tracks
     // this might take a while, so the LED matrix will reflect progress...
     for (uint8_t i = 1; i < 7; ++i) {
-      stale = true;
       Save(i);
       if (i == 1) ClearPattern(0); // no demo after Track 2
 
@@ -515,7 +513,6 @@ struct Engine {
   }
   inline void Save(uint8_t track) {
     const uint8_t bank = track >> 1;
-    if (!stale) return;
 #if DEBUG
     Serial.print("Saving to EEPROM... ");
 #endif
@@ -535,7 +532,6 @@ struct Engine {
     storage.put(TRACK_DATA_OFFSET + (track * MAX_CHAIN * 2), p_chain);
     storage.put(TRACK_DATA_OFFSET + (track * MAX_CHAIN * 2) + MAX_CHAIN, t_chain);
 
-    stale = false;
 #if DEBUG
     Serial.println("DONE!");
 #endif
@@ -623,7 +619,6 @@ struct Engine {
   void Paste() {
     if (copy_src && (copy_src != &get_sequence())) {
       get_sequence() = *copy_src;
-      stale = true;
     }
   }
 
@@ -643,7 +638,6 @@ struct Engine {
       // -------------------------
     }
 
-    stale = true;
     if (idx == p_select) {
       Reset();
     }
@@ -791,7 +785,6 @@ struct Engine {
           --p_chain_len;
           if (edit_idx) --edit_idx;
         }
-        stale = true;
       }
       return edit_idx;
     }
@@ -802,7 +795,6 @@ struct Engine {
       p_chain_len = 1;
       p_repeats = 0;
       p_chain[0] = p_ & 0x0f;
-      stale = true;
       return 0;
     }
 
@@ -816,7 +808,6 @@ struct Engine {
       ++p_chain_len;
     }
 
-    stale = true;
     return edit_idx;
   }
   void ClearChain() {
@@ -826,39 +817,31 @@ struct Engine {
   }
   void SetLength(uint8_t len) {
     get_sequence().SetLength(len);
-    stale = true;
   }
   bool BumpLength() {
-    stale = true;
     return get_sequence().BumpLength();
   }
   void NudgeOctave(int dir) {
     get_sequence().NudgeOctave(dir, clk_count > 3);
-    stale = true;
   }
   // change pitch, preserving flags
   void SetPitchSemitone(uint8_t p) {
     get_sequence().SetPitchSemitone(p, clk_count > 3 && get_sequence().next_is_note());
-    stale = true;
   }
   // p is expected to be already packed as 2-bit octave | 4-bit semitone
   void SetPitch(uint8_t p, uint8_t flags) {
     get_sequence().SetPitch(p, flags, clk_count > 3 && get_sequence().next_is_note());
-    stale = true;
   }
   void SetTime(uint8_t t) {
     get_sequence().SetTime(t, clk_count > 3);
-    stale = true;
   }
 
   void ToggleSlide() {
     get_sequence().ToggleSlide(clk_count > 3 && get_sequence().next_is_note());
     slide_on = get_sequence().get_slide();
-    stale = true;
   }
   void ToggleAccent() {
     get_sequence().ToggleAccent(clk_count > 3 && get_sequence().next_is_note());
-    stale = true;
   }
 
   void ToggleTriplets() {
