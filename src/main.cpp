@@ -4,12 +4,21 @@
 #ifndef DEBUG
 #define DEBUG 0
 #endif
+#define BOOT_MAGIC 0xB7
 
 #include <Arduino.h>
 #include "pins.h"
 #include "drivers.h"
 #include "engine.h"
 #include "MIDI.h"
+
+extern "C" {
+  static void jumptoboot(void) {
+    cli();
+    GPIOR0 = BOOT_MAGIC; // flag for bootloader
+    asm volatile("jmp 0xF800"); // byte address 0x1F000, using word addressing
+  }
+}
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
@@ -148,6 +157,16 @@ static void midi_note_on(byte channel, byte pitch, byte velocity) {
   midi_live_gate   = true;
   midi_live_note   = static_cast<uint8_t>(pitch);
   dac_stale = true;
+}
+static void midi_sysex_cb(byte *data, unsigned sz) {
+  // yeah, we're only looking for a very specific type of individual...
+  if (sz < 4 || data[0] != 0xF0 || data[1] != 0x7D || data[sz - 1] != 0xF7)
+    return;
+
+  // special command to initiate flash update
+  if (0x4A == data[2]) {
+    jumptoboot();
+  }
 }
 
 // crucial bits tying together the inputs + engine
@@ -325,20 +344,12 @@ void SplashAnim(bool reverse = false) {
   }
 }
 
-#if DEBUG
-extern "C" {
-  static void jumptoboot(void) {
-    // call bootloader to test
-    ((int (*)(void))0x1F000)();
-  }
-}
-#endif
-
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
   MIDI.setHandleNoteOn(midi_note_on);
   MIDI.setHandleNoteOff(midi_note_off);
+  MIDI.setHandleSystemExclusive(midi_sysex_cb);
 
   for (uint8_t i = 0; i < ARRAY_SIZE(INPUTS); ++i) {
     pinMode(INPUTS[i], INPUT); // pullup?
@@ -359,12 +370,12 @@ void setup() {
   PollInputs(inputs);
   PollInputs(inputs);
   PollInputs(inputs);
-#if DEBUG
-  /* This won't be necessary in production, bootloader runs first */
+
   if (inputs[TAP_NEXT].held()) {
     jumptoboot();
   }
 
+#if DEBUG
   Serial.begin(9600);
 #endif
 

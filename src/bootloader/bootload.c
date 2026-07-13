@@ -1,14 +1,17 @@
 /*
  * Minimal Serial MIDI SysEx Bootloader
  * Target: AT90USB1286
- * Clock : 16 MHz
+ * Clock : 4 MHz
  */
 
-// #define F_CPU 16000000UL
+#ifndef F_CPU
+#define F_CPU 4000000UL
+#endif
 
 #include <avr/boot.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 #include <avr/wdt.h>
 #include <util/delay.h>
 #include <stdint.h>
@@ -16,6 +19,8 @@
 #define APP_ADDRESS 0x0000
 #define PAGE_SIZE SPM_PAGESIZE
 #define SYSEX_MAX (PAGE_SIZE*2)
+#define MY_UBRR ((F_CPU / (16UL * 31250UL)) - 1UL)
+#define BOOT_MAGIC 0xB7
 
 static uint8_t page_buffer[PAGE_SIZE];
 static uint8_t sysex_buf[SYSEX_MAX];
@@ -24,19 +29,12 @@ static volatile uint16_t sysex_index = 0;
 static volatile uint8_t in_sysex = 0;
 
 static void uart_init(void) {
-  // 31250 baud @ 16 MHz → UBRR = 31
-  UBRR1H = 0;
-  UBRR1L = 31;
+  UBRR1H = (uint8_t)(MY_UBRR >> 8);
+  UBRR1L = (uint8_t)(MY_UBRR);
 
   UCSR1A = 0;
   UCSR1B = (1 << RXEN1);                  // RX only
   UCSR1C = (1 << UCSZ11) | (1 << UCSZ10); // 8N1
-}
-
-static uint8_t uart_rx(void) {
-  while (!(UCSR1A & (1 << RXC1)))
-    ;
-  return UDR1;
 }
 
 /* returns checksum of decoded bytes */
@@ -85,13 +83,10 @@ static void jump_to_app(void) {
   cli();
 
   // If application not blank
-  if (*(uint16_t *)APP_ADDRESS != 0xFFFF) {
+  if (pgm_read_word(APP_ADDRESS) != 0xFFFF) {
     ((void (*)(void))APP_ADDRESS)();
   }
-
-  // Otherwise stay here forever?
-  //while (1) ;
-  // nah, we'll just dump back into the updater
+  // otherwise, execution continues...
 }
 
 static uint8_t count = 0;
@@ -112,14 +107,14 @@ static void process_sysex(uint8_t *data, uint16_t len) {
     if (packed_len + 8 > len)
       return;
 
-    PORTD = (PORTD & 0x0F) | (count++ << 4); // cycle LEDs while writing
+    PORTF = 0x0E | (count++ << 4); // cycle LEDs while writing
 
     // if they match, cksum will become zero
     cksum ^= decode_7bit(&data[8], packed_len, page_buffer);
     if (cksum) {
       // uh-oh bad checksum, slow blink forever
       while (1) {
-        PORTD ^= 0xF0;
+        PORTF ^= 0xF0;
         _delay_ms(200);
       }
     }
@@ -129,9 +124,7 @@ static void process_sysex(uint8_t *data, uint16_t len) {
   }
 }
 
-static void midi_task(void) {
-  uint8_t b = uart_rx();
-
+static void handle_midi(uint8_t b) {
   if (b == 0xF0) {
     in_sysex = 1;
     sysex_index = 0;
@@ -151,36 +144,58 @@ static void midi_task(void) {
     sysex_buf[sysex_index++] = b;
 }
 
+static void reflash_mode(void) {
+  // poll serial MIDI forever
+  while (1) {
+    if (UCSR1A & (1 << RXC1))
+      handle_midi(UDR1);
+  }
+}
+
+static void hello(void) {
+  // indicate bootloader mode:
+  // walk steps 1-4 twice, then hold step 1 solid
+  for (uint8_t i = 0; i < 8; ++i) {
+    PORTF = 0x0E | (1 << (4 + (i & 0x3)));
+    _delay_ms(100);
+  }
+  PORTF = 0x1E; // step 1 solid
+}
+
 int main(void) {
+  GPIOR1 = MCUSR; // stash WDRF for app
+  MCUSR = 0; // clear WDRF
   wdt_disable();
-  DDRF = 0xFF; // select pin outputs
+
+  // -nostartfiles: .bss is never zeroed, so parser state is set explicitly
+  // (this also covers entry by jump from the app, where RAM is app leftovers)
+  sysex_index = 0;
+  in_sysex = 0;
+  count = 0;
+
+  DDRF = 0xFF; // pin outputs for switch matrix
   DDRB = 0x00; // button inputs
-  DDRD |= 0xF0; // direct LED outputs (but also the MIDI serial lines)
   uart_init();
 
-  // check for button combo to stop the jump
-  PORTF = 0x00;
-  PORTF = 0x0F;
-  _delay_ms(40);
-  if (PINB & (1 << 1)) { // hold WRITE/NEXT/TAP to stay in bootloader
-    // indicate bootloader mode: TIME, PITCH, FUNCTION, and A# key LEDS, all on
-    PORTD |= 0xF0;
-    // flash each LED twice for sanity check
-    for (uint8_t i = 0; i < 4; ++i) {
-      _delay_ms(100);
-      PORTD ^= (1 << (4 + i));
-      _delay_ms(100);
-      PORTD ^= (1 << (4 + i));
-      _delay_ms(100);
-      PORTD ^= (1 << (4 + i));
-      _delay_ms(100);
-      PORTD ^= (1 << (4 + i));
-    }
+  const uint8_t magic = (BOOT_MAGIC == GPIOR0); // flag from app?
+  PORTF = 0x00; // reset all
+  PORTF = 0x0F; // select pins off (HIGH)
+  if (magic) reflash_mode(); // let's get to the point
 
-    while (1) {
-      midi_task();
-    }
+  // Setup CPU clock divider relative to 16 MHz crystal
+  // This is already configured by the app for 4 MHz, but a cold boot still needs it.
+  CLKPR = (1 << CLKPCE); // Enable change sequence
+  CLKPR = (1 << CLKPS1); // Division by 4 factor
+
+  _delay_ms(40); // idk how long this needs to be?
+
+  // check for button combo to stop the jump
+  if ((PINB & (1 << 1))) { // hold WRITE/NEXT/TAP to stay in bootloader
+    hello();
+    reflash_mode();
   }
 
   jump_to_app();
+  hello();
+  reflash_mode(); // in case there is no app
 }
