@@ -895,6 +895,7 @@ void loop() {
         case midi::MidiType::Stop:
           midi_clk = false;
           clk_run = false;
+          if (write_mode) engine.Save(track_loaded);
           if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           DAC::SetGate(false);
           engine.Reset();
