@@ -10,6 +10,10 @@ A basic sequencer implementation has been hacked together on top of the core dri
 ## Update via MIDI SysEx
 A basic bootloader enables updates via MIDI. Hold the "Write/Next/Tap" button on startup to enter the bootloader; 4 LEDs will light up solid - PITCH, TIME, FUNCTION, and A#. Use a program like Sysex Librarian or MIDI-OX to send the "update.syx" file from a PC, taking care to throttle the send speed... (if it fails, you might need to send it slower!)
 
+## Operation
+
+See [Pattern Saving and MIDI Clock](docs/pattern-saving-and-midi-clock.md) for when edits are written to memory, safe power-down practice, and MIDI clock transport behavior.
+
 ## Development
 Building the firmware primarily uses the [PlatformIO](https://docs.platformio.org/en/latest/core/installation/methods/installer-script.html) toolchain. Run `pio run` from the repo root; the build process produces a `*.syx` file for use with the MIDI bootloader. You might have to run `pip install intelhex` once locally.
 

@@ -4,9 +4,13 @@
  */
 
 #pragma once
+#ifdef UNIT_TEST
+#include <engine_test_support.h>
+#else
 #include <Arduino.h>
 #include <EEPROM.h>
 #include "drivers.h"
+#endif
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
@@ -513,9 +517,9 @@ struct Engine {
     Serial.print("\n");
 #endif
   }
-  inline void Save(uint8_t track) {
+  inline bool Save(uint8_t track, bool force = false) {
     const uint8_t bank = track >> 1;
-    if (!stale) return;
+    if (!stale && !force) return false;
 #if DEBUG
     Serial.print("Saving to EEPROM... ");
 #endif
@@ -539,6 +543,7 @@ struct Engine {
 #if DEBUG
     Serial.println("DONE!");
 #endif
+    return true;
   }
 
   void Tick() { }
@@ -615,6 +620,8 @@ struct Engine {
       get_sequence().RegenPitches();
     if (time)
       get_sequence().RegenTimes();
+    if (pitch || time)
+      stale = true;
   }
 
   void Copy() {
@@ -651,9 +658,11 @@ struct Engine {
 
   void ClearAccents() {
     for (uint8_t &p : get_sequence().pitch) p &= ~(1 << 6);
+    stale = true;
   }
   void ClearSlides() {
     for (uint8_t &p : get_sequence().pitch) p &= ~(1 << 7);
+    stale = true;
   }
   void ClearRatchets() {
     // all Ratchets become regular Notes
@@ -663,6 +672,7 @@ struct Engine {
           t ^= (0x2 << (2 * i));
       }
     }
+    stale = true;
   }
   void ClearTies() {
     // all Ties become Rests
@@ -672,6 +682,7 @@ struct Engine {
           t ^= (0x2 << (2 * i));
       }
     }
+    stale = true;
   }
   void ClearRests() {
     // all Rests become Notes
@@ -681,12 +692,14 @@ struct Engine {
           t |= (0x1 << (2 * i));
       }
     }
+    stale = true;
   }
   void ClearNotes() {
     // reset to all Rests
     for (uint8_t &t : get_sequence().time_data) {
       t = 0;
     }
+    stale = true;
   }
 
   void ToggleMaskBit(uint8_t ix) {
@@ -823,6 +836,7 @@ struct Engine {
     p_chain_len = 0;
     memset(p_chain, 0, MAX_CHAIN);
     memset(t_chain, 0, MAX_CHAIN);
+    stale = true;
   }
   void SetLength(uint8_t len) {
     get_sequence().SetLength(len);
