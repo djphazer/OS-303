@@ -53,6 +53,9 @@ static elapsedMicros dac_timer;
 // static elapsedMillis led_timer;
 static elapsedMillis pattern_cleared_flash_timer;
 static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
+static elapsedMillis pattern_saved_flash_timer;
+static constexpr uint16_t PATTERN_SAVED_FLASH_STEP_MS = 100;
+static constexpr uint16_t PATTERN_SAVED_FLASH_MS = PATTERN_SAVED_FLASH_STEP_MS * 6;
 
 static Engine engine;
 
@@ -829,12 +832,18 @@ void ProcessConfigMenu() {
   }
 }
 
+bool SavePatterns(bool force = false) {
+  const bool saved = engine.Save(track_loaded, force);
+  if (saved) pattern_saved_flash_timer = 0;
+  return saved;
+}
+
 void SwitchToTrack() {
   // this means nothing gets saved if you switch banks in Play Mode...
   // could enable live-edits that do not persist
   // Also, this could stutter if you switch while playing in write mode
   if (write_mode)
-    engine.Save(track_loaded);
+    SavePatterns();
 
   engine.Load(tracknum);
   track_loaded = tracknum;
@@ -895,7 +904,7 @@ void loop() {
         case midi::MidiType::Stop:
           midi_clk = false;
           clk_run = false;
-          if (write_mode) engine.Save(track_loaded);
+          if (write_mode) SavePatterns();
           if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           DAC::SetGate(false);
           engine.Reset();
@@ -942,8 +951,13 @@ void loop() {
   // - when stopping the clock in write mode
   if ((inputs[WRITE_MODE].falling() && !clk_run) ||
       (write_mode && inputs[RUN].falling() && !midi_clk)) {
-    engine.Save(track_loaded);
+    SavePatterns();
   }
+
+  // Force-save the loaded bank. This bypasses stale tracking so it remains a
+  // recovery path if a future edit operation fails to mark pattern data dirty.
+  const bool force_save = write_mode && fn_mod && inputs[BACK_KEY].rising();
+  if (force_save) SavePatterns(true);
 
   // --- Analog Clock Start
   if (inputs[RUN].rising()) {
@@ -961,7 +975,7 @@ void loop() {
 
   switch (get_mode()) {
     default:
-      if (edit_mode) { // holding WRITE/NEXT/TAP
+      if (edit_mode && !force_save) { // holding WRITE/NEXT/TAP
         ProcessEdit();
       } else {
         // Flash lights for modifiers
@@ -1031,6 +1045,11 @@ void loop() {
 
   // a way to throttle LED update for dimming
   // if (led_timer > 1) {
+  if (pattern_saved_flash_timer < PATTERN_SAVED_FLASH_MS) {
+    const bool flash_on =
+      (pattern_saved_flash_timer / PATTERN_SAVED_FLASH_STEP_MS) % 2 == 0;
+    Leds::Set(FUNCTION_MODE_LED, flash_on);
+  }
   Leds::Send(); // hardware output, framebuffer reset
     // led_timer = 0;
   // }

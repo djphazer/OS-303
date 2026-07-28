@@ -517,9 +517,9 @@ struct Engine {
     Serial.print("\n");
 #endif
   }
-  inline void Save(uint8_t track) {
+  inline bool Save(uint8_t track, bool force = false) {
     const uint8_t bank = track >> 1;
-    if (!stale) return;
+    if (!stale && !force) return false;
 #if DEBUG
     Serial.print("Saving to EEPROM... ");
 #endif
@@ -543,6 +543,7 @@ struct Engine {
 #if DEBUG
     Serial.println("DONE!");
 #endif
+    return true;
   }
 
   void Tick() { }

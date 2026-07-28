@@ -28,13 +28,20 @@ In Write mode, the current bank is saved when any of these events occurs:
 
 Saving is intentionally performed while the sequencer is stopped where possible, because an EEPROM operation during playback could disturb timing.
 
+### Save confirmation and force save
+
+After a pattern bank has been written to EEPROM, the Function/Normal Mode LED flashes three times. EEPROM writes are synchronous: when the flashes begin, the write has already completed and no additional waiting period is required.
+
+To force-save the currently loaded bank, remain in Write mode, hold **FUNCTION**, and press **BACK**. A force save bypasses normal change tracking and is useful as a final confirmation before powering down.
+
 ### Safe power-down procedure
 
 After editing patterns:
 
 1. Stop the sequencer, either with RUN or by sending MIDI Stop.
-2. If desired, switch from Write to Play as an additional save point.
-3. Wait briefly for the save operation to finish before disconnecting power.
+2. Confirm that the Function/Normal Mode LED flashes three times.
+3. If no confirmation appears, use **FUNCTION + BACK** to force-save the bank.
+4. Power down after the confirmation flashes begin; no additional delay is required.
 
 Do not remove power while actively editing or running unless a save event has already occurred. The presence or absence of batteries does not change the save mechanism; retained patterns are stored in EEPROM.
 
@@ -68,5 +75,6 @@ If a pattern is missing after power-up, check the following:
 - Confirm the external device sends a real MIDI Stop message, not merely an end to Clock messages.
 - Confirm MIDI clock receive is enabled if relying on MIDI Stop as the save event.
 - After extensive edits, switch Write to Play while stopped before removing power.
+- Use **FUNCTION + BACK** in Write mode and look for the three-flash save confirmation.
 
 Merely ceasing to send MIDI Clock pulses is not equivalent to sending MIDI Stop. Without a Stop message or another save event, the unit cannot know that the external transport has stopped.
