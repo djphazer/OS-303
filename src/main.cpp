@@ -887,7 +887,6 @@ void loop() {
         case midi::MidiType::Start:
           midi_clk = true;
           clk_run = true;
-          if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           if (inputs[CLEAR_KEY].held()) perform_mode = true;
           engine.Reset();
           clk_count = 0;
@@ -895,7 +894,6 @@ void loop() {
         case midi::MidiType::Stop:
           midi_clk = false;
           clk_run = false;
-          if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) MIDI.sendRealTime(type);
           DAC::SetGate(false);
           engine.Reset();
           midi_note_depth = 0;
@@ -925,7 +923,7 @@ void loop() {
   }
 
   if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {
-    if (clocked) {
+    if (clocked && !midi_clk) {
       MIDI.sendRealTime(midi::Clock);
     }
     if (inputs[RUN].rising()) {
