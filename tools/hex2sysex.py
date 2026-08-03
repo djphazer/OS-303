@@ -10,6 +10,7 @@ MFR_ID = 0x7D
 
 CMD_WRITE_PAGE = 0x01
 CMD_EXECUTE = 0x02
+CMD_APP_JUMP = 0x4A
 
 def pack_7bit(data):
     """
@@ -70,6 +71,14 @@ def process(in_file, outbuf):
     maxaddr = ih.maxaddr()
 
     pages = (maxaddr + PAGE_SIZE) // PAGE_SIZE
+
+    msg = [
+        SYSEX_START,
+        MFR_ID,
+        CMD_APP_JUMP,
+        SYSEX_END
+    ]
+    outbuf.write(bytes(msg))
 
     for page in range(pages):
 
