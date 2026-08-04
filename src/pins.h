@@ -106,6 +106,7 @@ const uint8_t OUTPUTS[] = {
 
 // switched inputs, polled sequentially
 enum InputIndex : uint8_t {
+  // -- Switch Board matrix
   C_KEY, // 0 - PB0 with PH0 low
   D_KEY,
   E_KEY,
@@ -126,6 +127,7 @@ enum InputIndex : uint8_t {
   ASHARP_KEY,
   BACK_KEY, // 15 - PB3 with PH3 low
 
+  // -- muxed pins outside the switch matrix
   WRITE_MODE, // 16 - PA0 with PH0 low
   TRACK_SEL,
   CSHARP_KEY,
