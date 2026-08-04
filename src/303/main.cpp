@@ -1,16 +1,16 @@
 // Copyright (c) 2026, Nicholas J. Michalek
 //
 
-#ifndef DEBUG
-#define DEBUG 0
-#endif
-#define BOOT_MAGIC 0xB7
-
 #include <Arduino.h>
 #include "pins.h"
 #include "drivers.h"
 #include "engine.h"
 #include "MIDI.h"
+
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+#define BOOT_MAGIC 0xB7
 
 extern "C" {
   static void jumptoboot(void) {
