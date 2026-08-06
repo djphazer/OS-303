@@ -178,8 +178,6 @@ int main(void) {
   uart_init();
 
   const uint8_t magic = (BOOT_MAGIC == GPIOR0); // flag from app?
-  PORTF = 0x00; // reset all
-  PORTF = 0x0F; // select pins off (HIGH)
   if (magic) reflash_mode(); // let's get to the point
 
   // Setup CPU clock divider relative to 16 MHz crystal
@@ -187,10 +185,14 @@ int main(void) {
   CLKPR = (1 << CLKPCE); // Enable change sequence
   CLKPR = (1 << CLKPS1); // Division by 4 factor
 
-  _delay_ms(40); // idk how long this needs to be?
+  PORTF = 0x00; // reset all
+  PORTF = 0x0F; // deselect
+  PORTF = 0x0E; // select first row
+
+  _delay_ms(40); // settling time; grace period for button
 
   // check for button combo to stop the jump
-  if ((PINB & (1 << 1))) { // hold WRITE/NEXT/TAP to stay in bootloader
+  if ((PINB & 0xf0)) { // hold any of Steps 1-4 to stay in bootloader
     hello();
     reflash_mode();
   }
