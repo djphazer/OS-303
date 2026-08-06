@@ -28,12 +28,12 @@
 // a cute lil state machine with debounce
 struct PinState {
   enum SignalState {
-    // 3 bits for debounce
+    // 4 bits for debounce
     STATE_OFF     = 0x00,
-    STATE_RISING  = 0x03,
-    STATE_FALLING = 0x04,
-    STATE_ON      = 0x07,
-    STATE_MASK    = 0x07 // 3 bits only
+    STATE_RISING  = 0x07,
+    STATE_FALLING = 0x08,
+    STATE_ON      = 0x0F,
+    STATE_MASK    = 0x0F // 4 bits only
   };
   uint8_t state = 0; // shiftreg
   void push(bool high) { state = (state << 1) | high; }
@@ -91,16 +91,16 @@ namespace hw {
       delayMicroseconds(SWITCH_DELAY);
     }
   }
-
   inline void SetExtraLeds(bool a_or_b, bool part_two) {
     digitalWriteFast(AB_LED_PIN, a_or_b);
     digitalWriteFast(PART_LED_PIN, part_two);
   }
 
+  // turn on ONE LED - only used by the startup sequence
   inline void LightCell(uint8_t s, uint8_t n) {
     PORTF |= 0x0F; // unselect
     delayMicroseconds(SWITCH_DELAY);
-    PORTF |= (n << 4); // set led
+    PORTF = (1 << (4 + n)) | 0x0F; // set led
     PORTF &= ~(1 << s); // select
   }
 
@@ -110,12 +110,32 @@ namespace hw {
     LOOP(i, ARRAY_SIZE(inst_pins)) {
       digitalWriteFast(inst_pins[i], (mask & (1UL << i)) ? HIGH : LOW);
     }
+    delayMicroseconds(10); // settling time
     digitalWriteFast(TRIG_PIN, HIGH);
     delayMicroseconds(10); // hold trig pulse high for a moment
     digitalWriteFast(TRIG_PIN, LOW);
-
-    LOOP(i, ARRAY_SIZE(inst_pins)) {
-      digitalWriteFast(inst_pins[i], LOW);
-    }
   }
-}
+
+  // --- getters for switch codes - no debounce
+  inline uint8_t GetPrescale() {
+    return inputs[PRESCALE_BIT0].read() | inputs[PRESCALE_BIT1].read() << 1;
+  }
+  // Instrument select codes are in reverse order...
+  inline uint8_t GetInstSelect() {
+    return inputs[INST_SEL_BIT0].read() |
+      (inputs[INST_SEL_BIT1].read() << 1) |
+      (inputs[INST_SEL_BIT2].read() << 2) |
+      (inputs[INST_SEL_BIT3].read() << 3);
+  }
+  inline uint8_t GetModeSwitch() {
+    return inputs[MODE_BIT0].read() |
+      (inputs[MODE_BIT1].read() << 1) |
+      (inputs[MODE_BIT2].read() << 2);
+  }
+  inline uint8_t GetAutoFill() {
+    return inputs[AUTOFILL_BIT0].read() |
+      (inputs[AUTOFILL_BIT1].read() << 1) |
+      (inputs[AUTOFILL_BIT2].read() << 2);
+  }
+
+} // namespace hw

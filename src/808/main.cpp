@@ -62,7 +62,7 @@ void setup() {
 
   delay(100);
 
-  // LED test
+  // step LEDs & Trigger test
   LOOP(i, 4) {
     LOOP(n, 4) {
       hw::LightCell(i, n);
@@ -72,33 +72,157 @@ void setup() {
   }
 }
 
-static uint16_t ticks = 0;
+// --- State ---
 static uint16_t ledframe = 0;
+static bool trig = false;
+static elapsedMillis trig_timer = 0;
+static uint16_t trigmask = 0;
+static elapsedMicros poll_timer = 0;
+static uint8_t poll_ticks = 0;
+
+// crude sequencer model
+static constexpr uint8_t MAX_SEQ_STEPS = 16;
+static uint8_t ppqn = 12;
+static uint8_t clk_count = 0;
+static uint8_t beat_count = 0;
+static uint16_t sequence[MAX_SEQ_STEPS];
+static uint8_t step = 0;
+static bool reset = 0;
+
+// util
+const PinState &Input(uint8_t i) { return hw::inputs[i]; }
+
 void loop() {
   MIDI.read(); // to trigger callback handlers
 
-  hw::PollInputsAndSetLeds(ledframe);
-  // flicker between them for 'AB' mode
-  const bool ab_led = hw::inputs[ABVAR_BIT0].held() &&
-                      (hw::inputs[ABVAR_BIT1].off() && (ticks & 1));
-  hw::SetExtraLeds(ab_led, hw::inputs[IFVARIATION_B_SWITCH].held());
-  // clear frame
-  ledframe = 0;
+  //if (poll_timer > 100) {
+    hw::PollInputsAndSetLeds(ledframe);
+    // flicker between them for 'AB' mode
+    const bool ab_led = Input(ABVAR_BIT0).read() ||
+                        (Input(ABVAR_BIT1).read() && (poll_ticks & 0x10));
+    hw::SetExtraLeds(ab_led, Input(IFVARIATION_B_SWITCH).read());
 
-  // Testing: show pressed button, and trigger instruments
-  bool trig = false;
-  uint16_t testmask = 0;
-  LOOP(i, 16) {
-    if (hw::inputs[i].held()) {
-      // PORTF = led_bytes[i];
-      testmask |= (1UL << i);
-      ledframe |= (1UL << i);
+    ++poll_ticks;
+    ledframe = 0;
+    //poll_timer = 0;
+  //}
+
+  // --- input flags
+  const bool clocked = Input(CLOCK).rising();
+  const bool clk_run = !Input(RUN).off();
+  const bool clear_mod = Input(CLEAR_KEY).held();
+  const uint8_t inst_sel = 11 - hw::GetInstSelect();
+
+  // target the closest step
+  const uint8_t rec_step =
+      (!clk_run || (clk_count < ppqn / 2)) ? step : (step + 1) % MAX_SEQ_STEPS;
+
+  bool editmode = false;
+
+  switch (hw::GetModeSwitch()) {
+    // -- edit modes
+    case PATCLR_CODE:
+      // todo: set a flag?
+      // fall thru
+    case PART1_CODE:
+    case PART2_CODE:
+      editmode = true;
+      // show selected instrument hits
+      LOOP(i, 16) {
+        if (sequence[i] & (1UL << inst_sel))
+          ledframe |= (1UL << i);
+      }
+      break;
+
+    // -- play modes
+    case MANPLAY_CODE:
+      break;
+    case PLAY_CODE:
+      break;
+    case COMPOSE_CODE:
+      break;
+  }
+
+  if (clear_mod) {
+    // TEST: show Mode and Auto-fill switches
+    /*ledframe |= (1UL << (hw::GetModeSwitch()));*/
+    /*ledframe |= (1UL << (8 + hw::GetAutoFill()));*/
+
+    LOOP(i, 12) {
+      // --- clear a whole drum track
+      if (Input(i).rising()) {
+        LOOP(s, MAX_SEQ_STEPS) {
+          sequence[s] &= ~(1UL << i);
+        }
+      }
+    }
+  } else if (editmode) {
+    // edit selected instrument hits
+    LOOP(i, 16) {
+      if (Input(i).rising()) {
+        sequence[i] ^= (1UL << inst_sel); // toggle
+      }
+    }
+  } else {
+    // set bits in realtime
+    LOOP(i, 12) { // each step is one instrument
+      if (Input(i).rising()) {
+        trigmask |= (1UL << i);
+        sequence[rec_step] |= (1UL << i);
+        trig = true;
+      }
     }
   }
-  LOOP(i, 12) {
-    if (hw::inputs[i].rising()) trig = true;
-  }
-  if (trig) hw::Trigger(testmask);
 
-  ++ticks;
+
+  if (Input(TAP_FILL_IN).rising()) ++step %= MAX_SEQ_STEPS;
+  if (Input(RUN).rising() || Input(RUN).falling()) {
+    step = 0;
+    reset = true;
+  }
+
+  if (Input(CLEAR_KEY).rising()) {
+    switch (hw::GetPrescale()) {
+      case PSCODE_1:
+        ppqn = 8;
+        break;
+      case PSCODE_2:
+        ppqn = 4;
+        break;
+      case PSCODE_3:
+        ppqn = 12;
+        break;
+      case PSCODE_4:
+        ppqn = 6;
+        break;
+    }
+  }
+
+  // --- Clock & Sequencer ---
+  if (clocked) {
+    if (clk_run && 0 == clk_count) {
+      ++beat_count;
+      // advance sequencer
+      if (reset) reset = false;
+      else ++step %= MAX_SEQ_STEPS;
+
+      trigmask |= sequence[step];
+      trig = true;
+    }
+
+    // advance counter last
+    ++clk_count %= ppqn;
+  }
+
+  // current step LED flashes on beat
+  if (clk_count < ppqn/2) ledframe |= (1UL << step);
+  // -------------------------
+
+  // allows a window for simultaneous triggers to gather
+  if (trig_timer > 2 && trig) {
+    hw::Trigger(trigmask);
+    trigmask = 0;
+    trig = 0;
+    trig_timer = 0;
+  }
 }

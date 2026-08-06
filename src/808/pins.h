@@ -188,6 +188,58 @@ enum InputIndex : uint8_t {
 static_assert(INPUT_COUNT == 36, "missing/extra input index...");
 
 //
+// --- byte codes for switch positions ---
+//
+enum PrescaleCode : uint8_t {
+  PSCODE_1 = 0x3,
+  PSCODE_2 = 0x1,
+  PSCODE_3 = 0x2,
+  PSCODE_4 = 0x0,
+};
+enum AB_SwitchCode : uint8_t {
+  VAR_A  = 0x0,
+  VAR_AB = 0x2,
+  VAR_B  = 0x1,
+};
+enum InstSelectCode : uint8_t {
+  // basically in reverse order, 11 to 0
+  CH_CODE = 0b0000,
+  OH_CODE = 0b0001,
+  CY_CODE = 0b0010,
+  CB_CODE = 0b0011,
+  CP_CODE = 0b0100,
+  RS_CODE = 0b0101,
+  HT_CODE = 0b0110,
+  MT_CODE = 0b0111,
+  LT_CODE = 0b1000,
+  SD_CODE = 0b1001,
+  BD_CODE = 0b1010,
+  AC_CODE = 0b1011,
+};
+// in correct order
+static const uint8_t inst_codes[] = {
+  AC_CODE, BD_CODE, SD_CODE, LT_CODE,
+  MT_CODE, HT_CODE, RS_CODE, CP_CODE,
+  CB_CODE, CY_CODE, OH_CODE, CH_CODE,
+};
+enum AutoFillCode : uint8_t {
+  MANUAL_CODE = 0b000,
+  FILL2_CODE  = 0b001,
+  FILL4_CODE  = 0b010,
+  FILL8_CODE  = 0b011,
+  FILL12_CODE = 0b100,
+  FILL16_CODE = 0b101,
+};
+enum ModeSwitchCode : uint8_t {
+  PATCLR_CODE  = 0b101,
+  PART1_CODE   = 0b110,
+  PART2_CODE   = 0b111,
+  MANPLAY_CODE = 0b001,
+  PLAY_CODE    = 0b011,
+  COMPOSE_CODE = 0b000, //todo: needs hardware mod
+};
+
+//
 // --- useful pin correlations ---
 //
 const uint8_t select_pin[4] = {
@@ -196,14 +248,12 @@ const uint8_t select_pin[4] = {
 const uint8_t button_pins[4] = {
   PB0_PIN, PB1_PIN, PB2_PIN, PB3_PIN,
 };
-const uint8_t status_pins[] = {
+const uint8_t status_pins[4] = {
   PA0_PIN, PA1_PIN, PA2_PIN, PA3_PIN,
 };
 
-// The PG and PH pins are all part of PORTF on the Teensy,
-// which can simply be written as one byte.
-// Each LED in the switchboard matrix can be defined as series of bytes as addresses.
-// Welcome to CS-450
+// The PG and PH pins are all part of PORTF on the Teensy, which can simply be written as one byte.
+// (I don't think this works right tho?)
 const uint8_t led_bytes[16] = {
   // PG  PH
   0b00011110,
@@ -225,4 +275,20 @@ const uint8_t led_bytes[16] = {
   0b00100111,
   0b01000111,
   0b10000111,
+};
+
+// MIDI notes per instrument; follows General MIDI drum mapping
+static const uint8_t INST_NOTE[] = {
+  0,    // AC - unused, derived from velocity
+  36,   // BD  Bass Drum 1
+  38,   // SD  Acoustic Snare
+  41,   // LT  Low Floor Tom
+  45,   // MT  Low Tom
+  48,   // HT  Hi-Mid Tom
+  37,   // RS  Side Stick
+  39,   // CP  Hand Clap
+  56,   // CB  Cowbell
+  49,   // CY  Crash Cymbal 1
+  46,   // OH  Open Hi-Hat
+  42,   // CH  Closed Hi-Hat
 };
