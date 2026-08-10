@@ -42,6 +42,26 @@ extern "C" {
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
+// --- State ---
+static uint16_t ledframe = 0;
+static bool trig = false;
+static elapsedMillis trig_timer = 0;
+static uint16_t trigmask = 0;
+static elapsedMicros poll_timer = 0;
+static uint8_t poll_ticks = 0;
+
+// --- MIDI Callbacks ---
+static void midi_note_off(uint8_t chan, uint8_t note, uint8_t vel) {
+  // todo?
+}
+static void midi_note_on(uint8_t chan, uint8_t note, uint8_t vel) {
+  LOOP(i, ARRAY_SIZE(INST_NOTE)) {
+    if (note == INST_NOTE[i]) {
+      trigmask |= (1UL << i);
+      if (vel > 63) trigmask |= 1; // accent
+    }
+  }
+}
 static void midi_sysex_cb(byte *data, unsigned sz) {
   // yeah, we're only looking for a very specific type of individual...
   if (sz < 4 || data[0] != 0xF0 || data[1] != 0x7D || data[sz - 1] != 0xF7)
@@ -51,11 +71,12 @@ static void midi_sysex_cb(byte *data, unsigned sz) {
   if (0x4A == data[2]) { jumptoboot(); }
 }
 
+// --- INIT ---
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
-  // MIDI.setHandleNoteOn(midi_note_on);
-  // MIDI.setHandleNoteOff(midi_note_off);
+  MIDI.setHandleNoteOn(midi_note_on);
+  MIDI.setHandleNoteOff(midi_note_off);
   MIDI.setHandleSystemExclusive(midi_sysex_cb);
 
   hw::Init();
@@ -71,14 +92,6 @@ void setup() {
     }
   }
 }
-
-// --- State ---
-static uint16_t ledframe = 0;
-static bool trig = false;
-static elapsedMillis trig_timer = 0;
-static uint16_t trigmask = 0;
-static elapsedMicros poll_timer = 0;
-static uint8_t poll_ticks = 0;
 
 // crude sequencer model
 static constexpr uint8_t MAX_SEQ_STEPS = 16;
