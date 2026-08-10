@@ -24,6 +24,7 @@
 
 #include <Arduino.h>
 #include <MIDI.h>
+#include <EEPROM.h>
 #include "drivers.h"
 #include "pins.h"
 
@@ -41,7 +42,6 @@ extern "C" {
 }
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
-
 // --- State ---
 static uint16_t ledframe = 0;
 static bool trig = false;
@@ -60,10 +60,21 @@ static uint8_t clk_count = 0;
 // --crude sequencer model
 // separate tracks for each instrument?!
 static constexpr uint8_t MAX_SEQ_STEPS = 32;
-static uint16_t sequence[MAX_SEQ_STEPS];
+static uint16_t sequence[MAX_SEQ_STEPS]; // top 4 bits unused...
 static uint8_t step[INST_COUNT];
 static uint8_t length[INST_COUNT];
 static bool reset = 0;
+
+EEPROMClass storage;
+static void SAVE() {
+  hw::SetExtraLeds(true, true);
+  storage.put(0, sequence);
+  storage.put(64, length);
+}
+static void LOAD() {
+  storage.get(0, sequence);
+  storage.get(64, length);
+}
 
 void sequencer_advance() {
   if (reset) reset = false;
@@ -124,6 +135,7 @@ static void midi_start_cb() {
 }
 static void midi_stop_cb() {
   midi_clk = false;
+  clk_run = false;
   clock_reset();
 }
 static void midi_clock_cb() {
@@ -155,8 +167,17 @@ void setup() {
       delay(150);
     }
   }
-  LOOP(i, INST_COUNT) {
-    length[i] = 16;
+
+  LOAD();
+
+  if (length[0] > MAX_SEQ_STEPS) {
+    // WRONG ANSWER, INITIALIZE DEFAULTS
+    LOOP(i, INST_COUNT) {
+      length[i] = 16;
+    }
+    LOOP(i, MAX_SEQ_STEPS) {
+      sequence[i] = 0;
+    }
   }
 }
 
@@ -165,7 +186,7 @@ void loop() {
 
   hw::PollInputsAndSetLeds(ledframe);
   // --- input flags
-  clk_run = !Input(RUN).off();
+  //clk_run = !Input(RUN).off();
   const bool clear_mod = Input(CLEAR_KEY).held();
   const uint8_t inst_sel = 11 - hw::GetInstSelect();
   // flicker between both for 'AB' mode
@@ -254,7 +275,13 @@ void loop() {
 
   if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
     sequencer_advance();
-  if (Input(RUN).rising() || Input(RUN).falling()) {
+  if (Input(RUN).rising()) {
+    clock_reset();
+    clk_run = true;
+  }
+  if (Input(RUN).falling()) {
+    clk_run = false;
+    SAVE();
     clock_reset();
   }
 
