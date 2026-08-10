@@ -222,6 +222,7 @@ static const uint8_t inst_codes[] = {
   MT_CODE, HT_CODE, RS_CODE, CP_CODE,
   CB_CODE, CY_CODE, OH_CODE, CH_CODE,
 };
+static constexpr uint8_t INST_COUNT = 12;
 enum AutoFillCode : uint8_t {
   MANUAL_CODE = 0b000,
   FILL2_CODE  = 0b001,

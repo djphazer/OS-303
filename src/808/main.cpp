@@ -50,29 +50,38 @@ static uint16_t trigmask = 0;
 //static elapsedMicros poll_timer = 0;
 static uint8_t poll_ticks = 0;
 
-// crude sequencer model
-static constexpr uint8_t MAX_SEQ_STEPS = 32;
+// --clock state
 static uint8_t ppqn = 12;
 static bool midi_clk = false;
 static bool clk_run = false;
 static uint8_t clk_count = 0;
 /*static uint8_t beat_count = 0;*/
+
+// --crude sequencer model
+// separate tracks for each instrument?!
+static constexpr uint8_t MAX_SEQ_STEPS = 32;
 static uint16_t sequence[MAX_SEQ_STEPS];
-static uint8_t step = 0;
-static uint8_t length = 32;
+static uint8_t step[INST_COUNT];
+static uint8_t length[INST_COUNT];
 static bool reset = 0;
 
 void sequencer_advance() {
   if (reset) reset = false;
-  else ++step %= length;
+  else LOOP(i, INST_COUNT) {
+    ++step[i] %= length[i];
+  }
   /*++beat_count;*/
 
-  trigmask |= sequence[step];
+  LOOP(i, INST_COUNT) {
+    trigmask |= (sequence[step[i]] & (1UL << i));
+  }
   trig = true;
 }
 void sequencer_reset() {
   reset = true;
-  step = 0;
+  LOOP(i, INST_COUNT) {
+    step[i] = 0;
+  }
 }
 
 // --- Clock ---
@@ -146,29 +155,32 @@ void setup() {
       delay(150);
     }
   }
+  LOOP(i, INST_COUNT) {
+    length[i] = 16;
+  }
 }
 
 void loop() {
   MIDI.read(); // to trigger callback handlers
 
   hw::PollInputsAndSetLeds(ledframe);
-  // flicker between them for 'AB' mode
-  const bool ab_led = Input(ABVAR_BIT0).read() ||
-                      (Input(ABVAR_BIT1).read() && (poll_ticks & 0x10));
-  const bool variation = Input(IFVARIATION_B_SWITCH).read();
-  hw::SetExtraLeds(ab_led, variation);
-
-  ++poll_ticks;
-  ledframe = 0;
-
   // --- input flags
   clk_run = !Input(RUN).off();
   const bool clear_mod = Input(CLEAR_KEY).held();
   const uint8_t inst_sel = 11 - hw::GetInstSelect();
+  // flicker between both for 'AB' mode
+  const bool ab_led = Input(ABVAR_BIT0).read() ||
+                      (Input(ABVAR_BIT1).read() && (poll_ticks & 0x10));
+  const bool variation = Input(IFVARIATION_B_SWITCH).read();
+  hw::SetExtraLeds(ab_led, clk_run ? (step[inst_sel] >= 16) : variation);
+
+  ++poll_ticks;
+  ledframe = 0;
+
 
   // target the closest step
   const uint8_t rec_step =
-      (!clk_run || (clk_count < ppqn / 2)) ? step : (step + 1) % MAX_SEQ_STEPS;
+      (!clk_run || (clk_count < ppqn / 2)) ? step[inst_sel] : (step[inst_sel] + 1) % MAX_SEQ_STEPS;
 
   bool editmode = false;
 
@@ -192,7 +204,7 @@ void loop() {
         // set the last step
         LOOP(i, 16) {
           if (Input(i).rising())
-            length = 1 + i + (variation * 16);
+            length[inst_sel] = 1 + i + (variation * 16);
         }
       }
       break;
@@ -272,8 +284,8 @@ void loop() {
   }
 
   // current step LED flashes on beat
-  if ((variation && step >= 16) || (!variation && step < 16)) {
-    if ((clk_count % ppqn) < (ppqn/2)) ledframe ^= (1UL << (step % 16));
+  if ((variation && step[inst_sel] >= 16) || (!variation && step[inst_sel] < 16)) {
+    if ((clk_count % ppqn) < (ppqn/2)) ledframe ^= (1UL << (step[inst_sel] % 16));
   }
   // -------------------------
 
