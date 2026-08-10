@@ -47,7 +47,7 @@ static uint16_t ledframe = 0;
 static bool trig = false;
 static elapsedMillis trig_timer = 0;
 static uint16_t trigmask = 0;
-static elapsedMicros poll_timer = 0;
+//static elapsedMicros poll_timer = 0;
 static uint8_t poll_ticks = 0;
 
 // --- MIDI Callbacks ---
@@ -57,6 +57,7 @@ static void midi_note_off(uint8_t chan, uint8_t note, uint8_t vel) {
 static void midi_note_on(uint8_t chan, uint8_t note, uint8_t vel) {
   LOOP(i, ARRAY_SIZE(INST_NOTE)) {
     if (note == INST_NOTE[i]) {
+      trig = true;
       trigmask |= (1UL << i);
       if (vel > 63) trigmask |= 1; // accent
     }
@@ -94,34 +95,39 @@ void setup() {
 }
 
 // crude sequencer model
-static constexpr uint8_t MAX_SEQ_STEPS = 16;
+static constexpr uint8_t MAX_SEQ_STEPS = 32;
 static uint8_t ppqn = 12;
 static uint8_t clk_count = 0;
-static uint8_t beat_count = 0;
+/*static uint8_t beat_count = 0;*/
 static uint16_t sequence[MAX_SEQ_STEPS];
 static uint8_t step = 0;
+static uint8_t length = 16;
 static bool reset = 0;
 
 // util
 const PinState &Input(uint8_t i) { return hw::inputs[i]; }
+const uint8_t key_rising() {
+  LOOP(i, 16) {
+    if (Input(i).rising()) return i;
+  }
+  return 0xff;
+}
 
 void loop() {
   MIDI.read(); // to trigger callback handlers
 
-  //if (poll_timer > 100) {
-    hw::PollInputsAndSetLeds(ledframe);
-    // flicker between them for 'AB' mode
-    const bool ab_led = Input(ABVAR_BIT0).read() ||
-                        (Input(ABVAR_BIT1).read() && (poll_ticks & 0x10));
-    hw::SetExtraLeds(ab_led, Input(IFVARIATION_B_SWITCH).read());
+  hw::PollInputsAndSetLeds(ledframe);
+  // flicker between them for 'AB' mode
+  const bool ab_led = Input(ABVAR_BIT0).read() ||
+                      (Input(ABVAR_BIT1).read() && (poll_ticks & 0x10));
+  const bool variation = Input(IFVARIATION_B_SWITCH).read();
+  hw::SetExtraLeds(ab_led, variation);
 
-    ++poll_ticks;
-    ledframe = 0;
-    //poll_timer = 0;
-  //}
+  ++poll_ticks;
+  ledframe = 0;
 
   // --- input flags
-  const bool clocked = Input(CLOCK).rising();
+  const bool clocked = Input(CLOCK).rising_2bit();
   const bool clk_run = !Input(RUN).off();
   const bool clear_mod = Input(CLEAR_KEY).held();
   const uint8_t inst_sel = 11 - hw::GetInstSelect();
@@ -136,14 +142,24 @@ void loop() {
     // -- edit modes
     case PATCLR_CODE:
       // todo: set a flag?
+      if (clear_mod) {
+        break;
+      }
       // fall thru
     case PART1_CODE:
     case PART2_CODE:
       editmode = true;
       // show selected instrument hits
       LOOP(i, 16) {
-        if (sequence[i] & (1UL << inst_sel))
+        if (sequence[i + (variation * 16)] & (1UL << inst_sel))
           ledframe |= (1UL << i);
+      }
+      if (clear_mod) {
+        // set the last step
+        uint8_t key = key_rising();
+        if (key + 1) {
+          length = key + 1 + (variation * 16);
+        }
       }
       break;
 
@@ -161,11 +177,13 @@ void loop() {
     /*ledframe |= (1UL << (hw::GetModeSwitch()));*/
     /*ledframe |= (1UL << (8 + hw::GetAutoFill()));*/
 
-    LOOP(i, 12) {
-      // --- clear a whole drum track
-      if (Input(i).rising()) {
-        LOOP(s, MAX_SEQ_STEPS) {
-          sequence[s] &= ~(1UL << i);
+    if (!editmode) {
+      LOOP(i, 12) {
+        // --- clear a whole drum track
+        if (Input(i).rising()) {
+          LOOP(s, MAX_SEQ_STEPS) {
+            sequence[s] &= ~(1UL << i);
+          }
         }
       }
     }
@@ -173,7 +191,7 @@ void loop() {
     // edit selected instrument hits
     LOOP(i, 16) {
       if (Input(i).rising()) {
-        sequence[i] ^= (1UL << inst_sel); // toggle
+        sequence[i + (variation * 16)] ^= (1UL << inst_sel); // toggle
       }
     }
   } else {
@@ -188,7 +206,7 @@ void loop() {
   }
 
 
-  if (Input(TAP_FILL_IN).rising()) ++step %= MAX_SEQ_STEPS;
+  if (Input(TAP_FILL_IN).rising()) ++step %= length;
   if (Input(RUN).rising() || Input(RUN).falling()) {
     step = 0;
     reset = true;
@@ -214,10 +232,10 @@ void loop() {
   // --- Clock & Sequencer ---
   if (clocked) {
     if (clk_run && 0 == clk_count) {
-      ++beat_count;
       // advance sequencer
       if (reset) reset = false;
-      else ++step %= MAX_SEQ_STEPS;
+      else ++step %= length;
+      /*++beat_count;*/
 
       trigmask |= sequence[step];
       trig = true;

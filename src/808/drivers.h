@@ -37,6 +37,7 @@ struct PinState {
   };
   uint8_t state = 0; // shiftreg
   void push(bool high) { state = (state << 1) | high; }
+  const bool rising_2bit() const { return (state & 0x3) == 0x1; }
   const bool rising() const { return (state & STATE_MASK) == STATE_RISING; }
   const bool falling() const { return (state & STATE_MASK) == STATE_FALLING; }
   const bool held() const { return (state & STATE_MASK) == STATE_ON; }
@@ -45,7 +46,7 @@ struct PinState {
 };
 
 namespace hw {
-  static constexpr int SWITCH_DELAY = 3; // micros
+  static constexpr int SWITCH_DELAY = 10; // micros
   static constexpr int LED_DWELL_TIME = 25; // micros
 
   static PinState inputs[INPUT_COUNT];
@@ -112,7 +113,7 @@ namespace hw {
     }
     delayMicroseconds(10); // settling time
     digitalWriteFast(TRIG_PIN, HIGH);
-    delayMicroseconds(10); // hold trig pulse high for a moment
+    delayMicroseconds(30); // hold trig pulse high for a moment
     digitalWriteFast(TRIG_PIN, LOW);
   }
 
