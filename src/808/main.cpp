@@ -50,6 +50,44 @@ static uint16_t trigmask = 0;
 //static elapsedMicros poll_timer = 0;
 static uint8_t poll_ticks = 0;
 
+// crude sequencer model
+static constexpr uint8_t MAX_SEQ_STEPS = 32;
+static uint8_t ppqn = 12;
+static bool midi_clk = false;
+static bool clk_run = false;
+static uint8_t clk_count = 0;
+/*static uint8_t beat_count = 0;*/
+static uint16_t sequence[MAX_SEQ_STEPS];
+static uint8_t step = 0;
+static uint8_t length = 32;
+static bool reset = 0;
+
+void sequencer_advance() {
+  if (reset) reset = false;
+  else ++step %= length;
+  /*++beat_count;*/
+
+  trigmask |= sequence[step];
+  trig = true;
+}
+void sequencer_reset() {
+  reset = true;
+  step = 0;
+}
+
+// --- Clock ---
+static bool clock_advance() {
+  ++clk_count %= 24;
+  return 0 == (clk_count % ppqn);
+}
+static void clock_reset() {
+  clk_count = 0xff;
+  sequencer_reset();
+}
+
+// util
+const PinState &Input(uint8_t i) { return hw::inputs[i]; }
+
 // --- MIDI Callbacks ---
 static void midi_note_off(uint8_t chan, uint8_t note, uint8_t vel) {
   // todo?
@@ -71,6 +109,19 @@ static void midi_sysex_cb(byte *data, unsigned sz) {
   // special command to initiate flash update
   if (0x4A == data[2]) { jumptoboot(); }
 }
+static void midi_start_cb() {
+  midi_clk = true;
+  clock_reset();
+}
+static void midi_stop_cb() {
+  midi_clk = false;
+  clock_reset();
+}
+static void midi_clock_cb() {
+  if (midi_clk) {
+    if (clock_advance()) sequencer_advance();
+  }
+}
 
 // --- INIT ---
 void setup() {
@@ -79,6 +130,9 @@ void setup() {
   MIDI.setHandleNoteOn(midi_note_on);
   MIDI.setHandleNoteOff(midi_note_off);
   MIDI.setHandleSystemExclusive(midi_sysex_cb);
+  MIDI.setHandleClock(midi_clock_cb);
+  MIDI.setHandleStart(midi_start_cb);
+  MIDI.setHandleStop(midi_stop_cb);
 
   hw::Init();
 
@@ -92,25 +146,6 @@ void setup() {
       delay(150);
     }
   }
-}
-
-// crude sequencer model
-static constexpr uint8_t MAX_SEQ_STEPS = 32;
-static uint8_t ppqn = 12;
-static uint8_t clk_count = 0;
-/*static uint8_t beat_count = 0;*/
-static uint16_t sequence[MAX_SEQ_STEPS];
-static uint8_t step = 0;
-static uint8_t length = 16;
-static bool reset = 0;
-
-// util
-const PinState &Input(uint8_t i) { return hw::inputs[i]; }
-const uint8_t key_rising() {
-  LOOP(i, 16) {
-    if (Input(i).rising()) return i;
-  }
-  return 0xff;
 }
 
 void loop() {
@@ -127,8 +162,7 @@ void loop() {
   ledframe = 0;
 
   // --- input flags
-  const bool clocked = Input(CLOCK).rising_2bit();
-  const bool clk_run = !Input(RUN).off();
+  clk_run = !Input(RUN).off();
   const bool clear_mod = Input(CLEAR_KEY).held();
   const uint8_t inst_sel = 11 - hw::GetInstSelect();
 
@@ -156,9 +190,9 @@ void loop() {
       }
       if (clear_mod) {
         // set the last step
-        uint8_t key = key_rising();
-        if (key + 1) {
-          length = key + 1 + (variation * 16);
+        LOOP(i, 16) {
+          if (Input(i).rising())
+            length = 1 + i + (variation * 16);
         }
       }
       break;
@@ -206,10 +240,10 @@ void loop() {
   }
 
 
-  if (Input(TAP_FILL_IN).rising()) ++step %= length;
+  if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
+    sequencer_advance();
   if (Input(RUN).rising() || Input(RUN).falling()) {
-    step = 0;
-    reset = true;
+    clock_reset();
   }
 
   if (Input(CLEAR_KEY).rising()) {
@@ -230,23 +264,17 @@ void loop() {
   }
 
   // --- Clock & Sequencer ---
-  if (clocked) {
-    if (clk_run && 0 == clk_count) {
-      // advance sequencer
-      if (reset) reset = false;
-      else ++step %= length;
-      /*++beat_count;*/
-
-      trigmask |= sequence[step];
-      trig = true;
+  const bool clocked = Input(CLOCK).rising_2bit();
+  if (!midi_clk && clocked) {
+    if (clock_advance() && clk_run) {
+      sequencer_advance();
     }
-
-    // advance counter last
-    ++clk_count %= ppqn;
   }
 
   // current step LED flashes on beat
-  if (clk_count < ppqn/2) ledframe |= (1UL << step);
+  if ((variation && step >= 16) || (!variation && step < 16)) {
+    if ((clk_count % ppqn) < (ppqn/2)) ledframe ^= (1UL << (step % 16));
+  }
   // -------------------------
 
   // allows a window for simultaneous triggers to gather
