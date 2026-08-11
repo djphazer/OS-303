@@ -27,6 +27,7 @@
 #include <EEPROM.h>
 #include "drivers.h"
 #include "pins.h"
+#include "../clock.h"
 
 #ifndef DEBUG
 #define DEBUG 0
@@ -51,11 +52,11 @@ static uint16_t trigmask = 0;
 static uint8_t poll_ticks = 0;
 
 // --clock state
-static uint8_t ppqn = 12;
 static bool midi_clk = false;
 static bool clk_run = false;
-static uint8_t clk_count = 0;
+static uint8_t clk_count = 0; // for LED flashers
 /*static uint8_t beat_count = 0;*/
+static ClockEngine clock_;
 
 // --crude sequencer model
 // separate tracks for each instrument?!
@@ -99,11 +100,13 @@ void sequencer_reset() {
 }
 
 // --- Clock ---
-static bool clock_advance() {
+static void clock_advance() {
   ++clk_count %= 24;
-  return 0 == (clk_count % ppqn);
+  clock_.tick(true);
+  /*return 0 == (clk_count % ppqn);*/
 }
 static void clock_reset() {
+  clock_.resync();
   clk_count = 0xff;
   sequencer_reset();
 }
@@ -134,6 +137,7 @@ static void midi_sysex_cb(byte *data, unsigned sz) {
 }
 static void midi_start_cb() {
   midi_clk = true;
+  clk_run = true;
   clock_reset();
 }
 static void midi_stop_cb() {
@@ -143,7 +147,7 @@ static void midi_stop_cb() {
 }
 static void midi_clock_cb() {
   if (midi_clk) {
-    if (clock_advance()) sequencer_advance();
+    clock_advance();
   }
 }
 
@@ -203,8 +207,9 @@ void loop() {
 
 
   // target the closest step
-  const uint8_t rec_step =
-      (!clk_run || (clk_count < ppqn / 2)) ? step[inst_sel] : (step[inst_sel] + 1) % MAX_SEQ_STEPS;
+  const uint8_t rec_step = (!clk_run || (clk_count < clock_.ppqn / 2))
+                               ? step[inst_sel]
+                               : ((step[inst_sel] + 1) % length[inst_sel]);
 
   switch (hw::GetModeSwitch()) {
     // -- edit modes
@@ -303,31 +308,37 @@ void loop() {
   if (Input(CLEAR_KEY).rising()) {
     switch (hw::GetPrescale()) {
       case PSCODE_1:
-        ppqn = 8;
+        clock_.ppqn = 8;
         break;
       case PSCODE_2:
-        ppqn = 4;
+        clock_.ppqn = 4;
         break;
       case PSCODE_3:
-        ppqn = 12;
+        clock_.ppqn = 12;
         break;
       case PSCODE_4:
-        ppqn = 6;
+        clock_.ppqn = 6;
         break;
     }
   }
+
+  const uint8_t autofill = hw::GetAutoFill();
+  clock_.swing = autofill * 19;
 
   // --- Clock & Sequencer ---
   const bool clocked = Input(CLOCK).rising_2bit();
   if (!midi_clk && clocked) {
-    if (clock_advance() && clk_run) {
-      sequencer_advance();
-    }
-  }
+    // drives LED flashers
+    clock_advance();
+  } else // the magic that happens in between the clocks...
+    clock_.tick(false);
+
+  if (clock_.trig_pop() && clk_run)
+    sequencer_advance();
 
   // current step LED flashes on beat
   if ((variation && step[inst_sel] >= 16) || (!variation && step[inst_sel] < 16)) {
-    if ((clk_count % ppqn) < (ppqn/2)) ledframe ^= (1UL << (step[inst_sel] % 16));
+    if ((clk_count % clock_.ppqn) < (clock_.ppqn/2)) ledframe ^= (1UL << (step[inst_sel] % 16));
   }
   // -------------------------
 
