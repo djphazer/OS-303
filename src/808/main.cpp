@@ -206,25 +206,39 @@ void loop() {
   const uint8_t rec_step =
       (!clk_run || (clk_count < ppqn / 2)) ? step[inst_sel] : (step[inst_sel] + 1) % MAX_SEQ_STEPS;
 
-  bool editmode = false;
-
   switch (hw::GetModeSwitch()) {
     // -- edit modes
     case PATCLR_CODE:
+      // -- MUTE MODE --
+      ledframe |= ~(mutemask);
+
       if (clear_mod) {
+        // SOLO
+        LOOP(i, 16) {
+          if (Input(i).rising())
+            mutemask = ~(1UL << i);
+        }
+
+        // invert mask with TAP
+        if (Input(TAP_FILL_IN).rising())
+          mutemask = ~mutemask;
         break;
       }
-      // mutes
-      ledframe |= ~(mutemask);
       LOOP(i, 16) {
+        // toggle mutes
         if (Input(i).rising())
           mutemask ^= (1UL << i);
       }
+      if (Input(TAP_FILL_IN).rising()) {
+        mutemask = 0; // unmute all!
+      }
       break;
-      // fall thru
+
     case PART1_CODE:
     case PART2_CODE:
-      editmode = true;
+      if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
+        sequencer_advance();
+
       if (clear_mod) {
         // set the last step
         LOOP(i, 16) {
@@ -248,6 +262,9 @@ void loop() {
     // -- play modes
     case MANPLAY_CODE:
     case PLAY_CODE:
+      if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
+        sequencer_advance();
+
       // --- clear a whole drum track
       if (clear_mod) {
         LOOP(i, 12) {
@@ -272,9 +289,6 @@ void loop() {
     case COMPOSE_CODE:
       break;
   }
-
-  if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
-    sequencer_advance();
 
   if (Input(RUN).rising()) {
     clock_reset();
