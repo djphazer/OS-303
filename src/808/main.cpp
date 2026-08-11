@@ -63,6 +63,7 @@ static constexpr uint8_t MAX_SEQ_STEPS = 32;
 static uint16_t sequence[MAX_SEQ_STEPS]; // top 4 bits unused...
 static uint8_t step[INST_COUNT];
 static uint8_t length[INST_COUNT];
+static uint16_t mutemask = 0; // 12-bit mask, but we could use the extra 4...
 static bool reset = 0;
 
 EEPROMClass storage;
@@ -83,10 +84,12 @@ void sequencer_advance() {
   }
   /*++beat_count;*/
 
+  // trigger new step
   LOOP(i, INST_COUNT) {
+    if (mutemask & (1UL << i)) continue;
     trigmask |= (sequence[step[i]] & (1UL << i));
   }
-  trig = true;
+  trig = true; // always trigger?
 }
 void sequencer_reset() {
   reset = true;
@@ -208,73 +211,71 @@ void loop() {
   switch (hw::GetModeSwitch()) {
     // -- edit modes
     case PATCLR_CODE:
-      // todo: set a flag?
       if (clear_mod) {
         break;
       }
+      // mutes
+      ledframe |= ~(mutemask);
+      LOOP(i, 16) {
+        if (Input(i).rising())
+          mutemask ^= (1UL << i);
+      }
+      break;
       // fall thru
     case PART1_CODE:
     case PART2_CODE:
       editmode = true;
-      // show selected instrument hits
-      LOOP(i, 16) {
-        if (sequence[i + (variation * 16)] & (1UL << inst_sel))
-          ledframe |= (1UL << i);
-      }
       if (clear_mod) {
         // set the last step
         LOOP(i, 16) {
           if (Input(i).rising())
             length[inst_sel] = 1 + i + (variation * 16);
         }
+        break;
+      }
+      LOOP(i, 16) {
+        // show selected instrument hits
+        if (sequence[i + (variation * 16)] & (1UL << inst_sel))
+          ledframe |= (1UL << i);
+
+        // edit selected instrument hits
+        if (Input(i).rising()) {
+          sequence[i + (variation * 16)] ^= (1UL << inst_sel); // toggle
+        }
       }
       break;
 
     // -- play modes
     case MANPLAY_CODE:
-      break;
     case PLAY_CODE:
+      // --- clear a whole drum track
+      if (clear_mod) {
+        LOOP(i, 12) {
+          if (Input(i).rising()) {
+            LOOP(s, MAX_SEQ_STEPS) {
+              sequence[s] &= ~(1UL << i);
+            }
+          }
+        }
+        break;
+      }
+
+      // record hits in realtime
+      LOOP(i, 12) { // each step is one instrument
+        if (Input(i).rising()) {
+          trigmask |= (1UL << i);
+          sequence[rec_step] |= (1UL << i);
+          trig = true;
+        }
+      }
       break;
     case COMPOSE_CODE:
       break;
   }
 
-  if (clear_mod) {
-    // TEST: show Mode and Auto-fill switches
-    /*ledframe |= (1UL << (hw::GetModeSwitch()));*/
-    /*ledframe |= (1UL << (8 + hw::GetAutoFill()));*/
-
-    if (!editmode) {
-      LOOP(i, 12) {
-        // --- clear a whole drum track
-        if (Input(i).rising()) {
-          LOOP(s, MAX_SEQ_STEPS) {
-            sequence[s] &= ~(1UL << i);
-          }
-        }
-      }
-    }
-  } else if (editmode) {
-    // edit selected instrument hits
-    LOOP(i, 16) {
-      if (Input(i).rising()) {
-        sequence[i + (variation * 16)] ^= (1UL << inst_sel); // toggle
-      }
-    }
-  } else {
-    // set bits in realtime
-    LOOP(i, 12) { // each step is one instrument
-      if (Input(i).rising()) {
-        trigmask |= (1UL << i);
-        sequence[rec_step] |= (1UL << i);
-        trig = true;
-      }
-    }
-  }
-
-
   if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
     sequencer_advance();
+
   if (Input(RUN).rising()) {
     clock_reset();
     clk_run = true;
