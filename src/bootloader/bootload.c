@@ -177,13 +177,12 @@ int main(void) {
   DDRB = 0x00; // button inputs
   uart_init();
 
-  const uint8_t magic = (BOOT_MAGIC == GPIOR0); // flag from app?
-  if (magic) reflash_mode(); // let's get to the point
-
-  // Setup CPU clock divider relative to 16 MHz crystal
-  // This is already configured by the app for 4 MHz, but a cold boot still needs it.
+  // Setup 4 MHz CPU clock divider relative to 16 MHz crystal
   CLKPR = (1 << CLKPCE); // Enable change sequence
   CLKPR = (1 << CLKPS1); // Division by 4 factor
+
+  const uint8_t magic = (BOOT_MAGIC == GPIOR0); // flag from app?
+  if (magic) reflash_mode(); // let's get to the point
 
   PORTF = 0x00; // reset all
   PORTF = 0x0F; // deselect
