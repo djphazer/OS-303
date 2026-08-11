@@ -19,30 +19,7 @@
 // SOFTWARE.
 
 #include "pins.h"
-
-// my lil library of macros
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
-#define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
-#define LOOP(i, n) for(uint8_t i = 0; i < (n); ++i)
-
-// a cute lil state machine with debounce
-struct PinState {
-  enum SignalState {
-    // 4 bits for debounce
-    STATE_OFF     = 0x00,
-    STATE_RISING  = 0x07,
-    STATE_FALLING = 0x08,
-    STATE_ON      = 0x0F,
-    STATE_MASK    = 0x0F // 4 bits only
-  };
-  uint8_t state = 0; // shiftreg
-  void push(bool high) { state = (state << 1) | high; }
-  const bool rising() const { return (state & STATE_MASK) == STATE_RISING; }
-  const bool falling() const { return (state & STATE_MASK) == STATE_FALLING; }
-  const bool held() const { return (state & STATE_MASK) == STATE_ON; }
-  const bool off() const { return (state & STATE_MASK) == 0; }
-  const bool read() const { return state & 1; }
-};
+#include "../utils.h"
 
 namespace hw {
   static constexpr int SWITCH_DELAY = 3; // micros

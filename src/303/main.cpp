@@ -930,7 +930,7 @@ void loop() {
 
   // DIN sync clock @ 24ppqn
   if (!midi_clk) {
-    clocked = inputs[CLOCK].rising();
+    clocked = inputs[CLOCK].rising_2bit();
   }
 
   if (GlobalSettings.Get(SETTING_MIDI_CLOCK_TX)) {

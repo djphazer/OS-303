@@ -2,6 +2,7 @@
 
 #pragma once
 #include "pins.h"
+#include "../utils.h"
 
 // not sure if we even need this...
 static constexpr uint16_t SWITCH_DELAY = 1; // microseconds

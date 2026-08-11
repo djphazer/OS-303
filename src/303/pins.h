@@ -211,25 +211,6 @@ struct MatrixPin {
   InputIndex button;
 };
 
-enum SignalState {
-  // 3 bits for debounce
-  STATE_OFF     = 0x00,
-  STATE_RISING  = 0x03,
-  STATE_FALLING = 0x04,
-  STATE_ON      = 0x07,
-};
-struct PinState {
-  uint8_t state = 0; // shiftreg
-  void push(bool high) {
-    state = (state << 1) | high;
-  }
-  const bool rising() const { return (state & STATE_ON) == STATE_RISING; }
-  const bool falling() const { return (state & STATE_ON) == STATE_FALLING; }
-  const bool held() const { return (state & STATE_ON) == STATE_ON; }
-  const bool off() const { return (state & STATE_ON) == 0; }
-  const bool read() const { return state & 1; }
-};
-
 // more useful correlations
 const MatrixPin switched_leds[16 + 4] = {
   // select,  LED,   pitch, Button,

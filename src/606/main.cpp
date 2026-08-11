@@ -19,13 +19,12 @@
 // SOFTWARE.
 
 /*
- * TR-808 sequencer firmware
+ * TR-606 sequencer firmware
  */
 
 #include <Arduino.h>
 #include <MIDI.h>
 #include "drivers.h"
-#include "pins.h"
 
 #ifndef DEBUG
 #define DEBUG 0

@@ -8,9 +8,6 @@
 #include <EEPROM.h>
 #include "drivers.h"
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
-#define CONSTRAIN(x, lb, ub) do { if (x < (lb)) x = lb; else if (x > (ub)) x = ub; } while (0)
-
 static constexpr int MAX_STEPS = 32;
 static constexpr int MAX_CHAIN = 16;
 static constexpr int NUM_PATTERNS = 16; // per bank; 4 banks in eeprom
