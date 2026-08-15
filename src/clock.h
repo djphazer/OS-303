@@ -20,10 +20,10 @@ struct ClockEngine {
   uint16_t beat_counter;
   bool trig_q = false; // consumable
   uint32_t int_tempo; // micro-second interval @ 24ppqn
+  uint32_t prev_cycle; // last measurement from external sync
 
   // settings
   uint8_t swing = 0; // 0 to 100
-  uint8_t ppqn = 12; // clock divider
 
   // maybe, maybe not
   void midi_start();
@@ -31,11 +31,21 @@ struct ClockEngine {
   void start();
   void stop();
 
-  void resync() {
+  void reset() {
     beat_counter = 0;
-    // todo: what if it was ALMOST there?
+    trig_q = true;
     int_timer_ = 0;
-    trig_q = true; // always retrigger
+    ext_timer_ = 0;
+  }
+
+  void resync() {
+    // what if it was ALMOST there?
+    //if (int_timer_ > int_tempo/4)
+    if (beat_counter & 1) {
+      ++beat_counter;
+      trig_q = true;
+    }
+    int_timer_ = 0;
   }
 
   bool trig_pop() {
@@ -46,21 +56,23 @@ struct ClockEngine {
     return false;
   }
 
-  inline void check_trig() {
+  inline void check_trig(const uint8_t ppqn = 6) {
     // output trigger math, using ppqn and swing
     const uint32_t beat_interval = (int_tempo * ppqn);
     const int32_t swing_offset =
         ((beat_counter & 1) ? -1 : 1) * ((beat_interval >> 1) * swing / 100);
     if (int_timer_ > (beat_interval + swing_offset)) {
       ++beat_counter;
-      int_timer_ = 0;
+      int_timer_ -= (beat_interval + swing_offset);
       trig_q = true;
     }
   }
 
-  void tick(bool rising_edge) {
+  // ppqn @ 6 yields 16th notes, aka step advance 4x per beat
+  void tick(bool rising_edge, const uint8_t ppqn = 6) {
     if (rising_edge) {
       uint32_t interval = ext_timer_;
+      if (interval < SYNC_WINDOW) return;
 
       // check diff against int_tempo to determine how far off we are
       //
@@ -78,6 +90,6 @@ struct ClockEngine {
       ext_timer_ = 0;
     }
 
-    check_trig();
+    check_trig(ppqn);
   }
 };

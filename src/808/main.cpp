@@ -58,6 +58,8 @@ static uint8_t clk_count = 0; // for LED flashers
 /*static uint8_t beat_count = 0;*/
 static ClockEngine clock_;
 
+static constexpr uint8_t PPQN = 24;
+
 // --crude sequencer model
 // separate tracks for each instrument?!
 static constexpr uint8_t MAX_SEQ_STEPS = 32;
@@ -101,13 +103,13 @@ void sequencer_reset() {
 
 // --- Clock ---
 static void clock_advance() {
-  ++clk_count %= 24;
+  ++clk_count %= PPQN;
+  if (0 == clk_count) clock_.resync();
   clock_.tick(true);
-  /*return 0 == (clk_count % ppqn);*/
 }
 static void clock_reset() {
-  clock_.resync();
   clk_count = 0xff;
+  clock_.reset();
   sequencer_reset();
 }
 
@@ -206,8 +208,8 @@ void loop() {
   ledframe = 0;
 
 
-  // target the closest step
-  const uint8_t rec_step = (!clk_run || (clk_count < clock_.ppqn / 2))
+  // target the closest step - TODO: internal ppqn? query clock engine instead?
+  const uint8_t rec_step = (!clk_run || (clk_count < PPQN / 2))
                                ? step[inst_sel]
                                : ((step[inst_sel] + 1) % length[inst_sel]);
 
@@ -292,6 +294,7 @@ void loop() {
       }
       break;
     case COMPOSE_CODE:
+      // unavailable without bodge wire
       break;
   }
 
@@ -305,21 +308,20 @@ void loop() {
     clock_reset();
   }
 
-  if (Input(CLEAR_KEY).rising()) {
-    switch (hw::GetPrescale()) {
-      case PSCODE_1:
-        clock_.ppqn = 8;
-        break;
-      case PSCODE_2:
-        clock_.ppqn = 4;
-        break;
-      case PSCODE_3:
-        clock_.ppqn = 12;
-        break;
-      case PSCODE_4:
-        clock_.ppqn = 6;
-        break;
-    }
+  // -- Pre-scale switch is UI context layer
+  switch (hw::GetPrescale()) {
+    case PSCODE_1:
+      // Mutes
+      break;
+    case PSCODE_2:
+      // Live Edit
+      break;
+    case PSCODE_3:
+      // Live Play
+      break;
+    case PSCODE_4:
+      // Pattern Select
+      break;
   }
 
   const uint8_t autofill = hw::GetAutoFill();
@@ -338,12 +340,12 @@ void loop() {
 
   // current step LED flashes on beat
   if ((variation && step[inst_sel] >= 16) || (!variation && step[inst_sel] < 16)) {
-    if ((clk_count % clock_.ppqn) < (clock_.ppqn/2)) ledframe ^= (1UL << (step[inst_sel] % 16));
+    if ((clk_count % PPQN) < (PPQN/2)) ledframe ^= (1UL << (step[inst_sel] % 16));
   }
   // -------------------------
 
   // allows a window for simultaneous triggers to gather
-  if (trig_timer > 2 && trig) {
+  if (trig_timer > 1 && trig) {
     hw::Trigger(trigmask);
     trigmask = 0;
     trig = 0;
