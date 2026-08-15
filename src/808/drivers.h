@@ -95,24 +95,24 @@ namespace hw {
 
   // --- getters for switch codes - no debounce
   inline uint8_t GetPrescale() {
-    return inputs[PRESCALE_BIT0].read() | inputs[PRESCALE_BIT1].read() << 1;
+    return inputs[PRESCALE_BIT0].held() | inputs[PRESCALE_BIT1].held() << 1;
   }
   // Instrument select codes are in reverse order...
   inline uint8_t GetInstSelect() {
-    return inputs[INST_SEL_BIT0].read() |
-      (inputs[INST_SEL_BIT1].read() << 1) |
-      (inputs[INST_SEL_BIT2].read() << 2) |
-      (inputs[INST_SEL_BIT3].read() << 3);
+    return inputs[INST_SEL_BIT0].held() |
+      (inputs[INST_SEL_BIT1].held() << 1) |
+      (inputs[INST_SEL_BIT2].held() << 2) |
+      (inputs[INST_SEL_BIT3].held() << 3);
   }
   inline uint8_t GetModeSwitch() {
-    return inputs[MODE_BIT0].read() |
-      (inputs[MODE_BIT1].read() << 1) |
-      (inputs[MODE_BIT2].read() << 2);
+    return inputs[MODE_BIT0].held() |
+      (inputs[MODE_BIT1].held() << 1) |
+      (inputs[MODE_BIT2].held() << 2);
   }
   inline uint8_t GetAutoFill() {
-    return inputs[AUTOFILL_BIT0].read() |
-      (inputs[AUTOFILL_BIT1].read() << 1) |
-      (inputs[AUTOFILL_BIT2].read() << 2);
+    return inputs[AUTOFILL_BIT0].held() |
+      (inputs[AUTOFILL_BIT1].held() << 1) |
+      (inputs[AUTOFILL_BIT2].held() << 2);
   }
 
 } // namespace hw
