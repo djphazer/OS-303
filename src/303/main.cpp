@@ -1,11 +1,32 @@
 // Copyright (c) 2026, Nicholas J. Michalek
 //
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+/*
+ * TB-303 sequencer firmware
+ */
 
 #include <Arduino.h>
+#include <MIDI.h>
 #include "pins.h"
 #include "drivers.h"
 #include "engine.h"
-#include "MIDI.h"
 
 #ifndef DEBUG
 #define DEBUG 0
@@ -63,7 +84,8 @@ static elapsedMicros dac_timer;
 static elapsedMillis pattern_cleared_flash_timer;
 static constexpr uint16_t PATTERN_CLEARED_FLASH_MS = 400;
 
-static Engine engine;
+ClockEngine clock_;
+Engine engine(clock_);
 
 // TODO: separate generalized UI class?
 enum UIMode {
@@ -224,22 +246,22 @@ bool input_pitch(bool mod = false) {
 bool input_time(bool mod = false) {
   bool result = false;
   if (inputs[DOWN_KEY].rising()) {
-    if (!mod) engine.Advance(track_mode);
+    if (!mod) engine.Advance();
     engine.SetTime(1); // note
     result = true;
   }
   if (inputs[UP_KEY].rising()) {
-    if (!mod) engine.Advance(track_mode);
+    if (!mod) engine.Advance();
     engine.SetTime(2); // tie
     result = true;
   }
   if (inputs[ACCENT_KEY].rising()) {
-    if (!mod) engine.Advance(track_mode);
+    if (!mod) engine.Advance();
     engine.SetTime(0); // rest
     result = true;
   }
   if (inputs[SLIDE_KEY].rising()) {
-    if (!mod) engine.Advance(track_mode);
+    if (!mod) engine.Advance();
     engine.SetTime(3); // ????
     result = true;
   }
@@ -482,7 +504,7 @@ void ProcessDefault(const bool &clear_mod) {
         engine.AdvancePitch(dir);
         DAC::SetGate(true);
       } else
-        DAC::SetGate(engine.Advance(track_mode, dir));
+        DAC::SetGate(engine.Advance(dir));
       DAC::SetAccent(engine.get_accent());
       DAC::SetSlide(engine.get_slide_dac());
       DAC::SetPitch(engine.get_pitch() + unpack_pitch(transpose));
@@ -781,6 +803,28 @@ void ProcessTimeMenu() {
   if (inputs[FUNCTION_KEY].rising()) mode_ = NORMAL_MODE;
 
   // TODO: swing amount, clock division, etc.
+
+  // Clock Swing amount on the black keys
+  Leds::Set(CSHARP_KEY_LED, clock_.swing >= 15);
+  Leds::Set(DSHARP_KEY_LED, clock_.swing >= 35);
+  Leds::Set(FSHARP_KEY_LED, clock_.swing >= 55);
+  Leds::Set(GSHARP_KEY_LED, clock_.swing >= 75);
+  Leds::Set(ASHARP_KEY_LED, clock_.swing >= 90);
+  if (inputs[CSHARP_KEY].rising()) {
+    clock_.swing = clock_.swing > 0 ? 0 : 19;
+  }
+  if (inputs[DSHARP_KEY].rising()) {
+    clock_.swing = 19 * 2;
+  }
+  if (inputs[FSHARP_KEY].rising()) {
+    clock_.swing = 19 * 3;
+  }
+  if (inputs[GSHARP_KEY].rising()) {
+    clock_.swing = 19 * 4;
+  }
+  if (inputs[ASHARP_KEY].rising()) {
+    clock_.swing = 99; // dayum son
+  }
 }
 void ProcessPitchMenu() {
   static bool stale = false;
@@ -1024,7 +1068,8 @@ void loop() {
       }
     }
     dac_stale = true;
-  }
+  } else if (clk_run)
+    engine.trig_check(false);
 
   // increment clock counter after everything else
   if (clocked) {

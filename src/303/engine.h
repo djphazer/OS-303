@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include "drivers.h"
+#include "../clock.h"
 
 static constexpr int MAX_STEPS = 32;
 static constexpr int MAX_CHAIN = 16;
@@ -418,16 +419,21 @@ struct Engine {
   uint8_t p_select = 0;
   uint8_t next_p = 0; // queued pattern
 
-  int8_t clk_count = -1;
+  int8_t clk_count = -1; // TODO: maybe get rid of this in favor of ClockEngine
   int8_t play_dir = PLAY_FORWARD;
 
   bool gate_hold = false; // tie/slide: hold gate across 16ths (firstpr.com 303 slide / gate)
   bool slide_on = false;
   bool resting = false; // hey shutup
+  bool track_mode_ = false;
 
   Sequence* copy_src = nullptr;
 
   uint16_t qmask = 0x0fff; // quantizer scale mask
+
+  ClockEngine &clock_;
+
+  Engine(ClockEngine &cl) : clock_(cl) {}
 
   inline bool Init(const bool reset_memory) {
 #if DEBUG
@@ -536,8 +542,7 @@ struct Engine {
 
   void Tick() { }
 
-  // returns false for rests
-  bool Advance(const bool &track_mode, int direction = 1) {
+  bool Advance(int direction = 1) {
     // start sliding before advancing
     // Slide: goes high when leaving a slide, stays high when arriving at a tie, otherwise, cancel
     slide_on = get_sequence().get_slide() || (slide_on && get_sequence().next_is_tie(direction));
@@ -545,7 +550,7 @@ struct Engine {
     bool result = get_sequence().Advance(direction);
     // jump to next pattern at end of current one
     if (0 == get_sequence().time_pos) {
-      if (track_mode && p_chain_len) {
+      if (track_mode_ && p_chain_len) {
         if (++p_repeats > (p_chain[p_chain_pos] >> 4)) {
           ++p_chain_pos %= p_chain_len;
           p_repeats = 0;
@@ -581,20 +586,24 @@ struct Engine {
     resting = false;
   }
 
-  // returns true on step advance (clock divide by 6)
-  bool Clock(const bool &track_mode) {
-    ++clk_count %= 6;
-
-    if (clk_count == 0) { // sixteenth note advance
-      Advance(track_mode, play_dir);
-      return true;
+  void trig_check(const bool rising) {
+    clock_.tick(rising);
+    if (clock_.trig_pop()) {
+      Advance();
     }
+  }
 
-    return false;
+  // returns true on 1/16th notes (clock divide by 6)
+  bool Clock(const bool &track_mode) {
+    track_mode_ = track_mode;
+    trig_check(true);
+    ++clk_count %= 6;
+    return (clk_count == 0);
   }
 
   void Reset() {
     get_sequence().Reset();
+    clock_.reset();
     clk_count = -1;
     gate_hold = false;
     slide_on = false;
@@ -707,7 +716,7 @@ struct Engine {
     // First 3 of 6 DIN clocks per 16th — matches reference OS-303. A ~1.3ms micros() window
     // here is easy to miss if loop() is slower than that (MIDI/LEDs/etc.), so non-slide
     // notes go silent while slide/tie still work (slide_gate holds high all 6 clocks).
-    return clk_count < 3;
+    return clock_.check_swung_gate(4);
   }
   bool get_accent() const {
     if (resting) return false;

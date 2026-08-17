@@ -10,6 +10,7 @@
  * written by hand, for the love of the game
  */
 
+#pragma once
 #include <elapsedMillis.h>
 
 struct ClockEngine {
@@ -65,6 +66,14 @@ struct ClockEngine {
   const bool check_gate(const uint8_t mult = 1) const {
     const int period = (PPQN / mult);
     return clk_count % period < period/2;
+  }
+  // okay, but we need one with swing...
+  const bool check_swung_gate(const uint8_t mult = 1) const {
+    const uint32_t beat_interval = (int_tempo * (PPQN / mult));
+    const int32_t swing_offset =
+        ((beat_counter & 1) ? -1 : 1) * ((beat_interval >> 1) * swing / 100);
+    const uint32_t gate_interval = (beat_interval + swing_offset) / 2;
+    return int_timer_ < gate_interval;
   }
 
   inline void check_trig() {
