@@ -47,9 +47,12 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 // --- State ---
 static uint16_t ledframe = 0;
 static bool trig = false;
+static uint16_t trigview = 0;
 static uint16_t trigmask = 0;
 //static elapsedMicros poll_timer = 0;
 static uint8_t poll_ticks = 0;
+static uint8_t inst_sel = 0;
+static bool variation = 0;
 
 // --clock state
 static bool midi_clk = false;
@@ -181,113 +184,104 @@ void setup() {
   }
 }
 
+void ui_mute_page() {
+  ledframe |= ~(mutemask);
+
+  if (Input(CLEAR_KEY).held()) {
+    // SOLO
+    LOOP(i, 16) {
+      if (Input(i).rising())
+        mutemask = ~(1UL << i);
+    }
+
+    // invert mask with TAP
+    if (Input(TAP_FILL_IN).rising())
+      mutemask = ~mutemask;
+    return;
+  }
+
+  LOOP(i, 16) {
+    // toggle mutes
+    if (Input(i).rising())
+      mutemask ^= (1UL << i);
+  }
+  if (Input(TAP_FILL_IN).rising()) {
+    mutemask = 0; // unmute all!
+  }
+}
+void ui_patsel_page() {
+}
+void ui_stepedit_page() {
+  // --- STEP EDIT ---
+  if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
+    sequencer_advance();
+
+  if (Input(CLEAR_KEY).held()) {
+    // set the last step
+    LOOP(i, 16) {
+      if (Input(i).rising())
+        length[inst_sel] = 1 + i + (variation * 16);
+    }
+    return;
+  }
+  LOOP(i, 16) {
+    // show selected instrument hits
+    if (sequence[i + (variation * 16)] & (1UL << inst_sel))
+      ledframe |= (1UL << i);
+
+    // edit selected instrument hits
+    if (Input(i).rising()) {
+      sequence[i + (variation * 16)] ^= (1UL << inst_sel); // toggle
+    }
+  }
+}
+void ui_liveplay_page() {
+  ledframe |= trigview;
+
+  if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
+    sequencer_advance();
+
+  // --- clear a whole drum track
+  if (Input(CLEAR_KEY).held()) {
+    LOOP(i, 12) {
+      if (Input(i).rising()) {
+        LOOP(s, MAX_SEQ_STEPS) {
+          sequence[s] &= ~(1UL << i);
+        }
+      }
+    }
+    return;
+  }
+
+  // record hits in realtime
+  LOOP(i, 12) { // each step is one instrument
+    if (Input(i).rising()) {
+      // target the closest step
+      const uint8_t rec_step = (!clk_run || clock_.check_gate(4))
+                           ? step[i]
+                           : ((step[i] + 1) % length[i]);
+      sequence[rec_step] |= (1UL << i);
+      trigmask |= (1UL << i);
+      trig = true;
+    }
+  }
+}
+
 void loop() {
   MIDI.read(); // to trigger callback handlers
-
 
   hw::PollInputsAndSetLeds(ledframe);
   // --- input flags
   //clk_run = !Input(RUN).off();
-  const bool clear_mod = Input(CLEAR_KEY).held();
-  const uint8_t inst_sel = 11 - hw::GetInstSelect();
+  inst_sel = 11 - hw::GetInstSelect();
   // flicker between both for 'AB' mode
   const bool ab_led = Input(ABVAR_BIT0).read() ||
                       (Input(ABVAR_BIT1).read() && (poll_ticks & 0x10));
-  const bool variation = Input(IFVARIATION_B_SWITCH).read();
+  variation = Input(IFVARIATION_B_SWITCH).read();
   hw::SetExtraLeds(ab_led, clk_run ? (step[inst_sel] >= 16) : variation);
 
   ++poll_ticks;
   ledframe = 0;
-
-
-  switch (hw::GetModeSwitch()) {
-    // -- edit modes
-    case PATCLR_CODE:
-      // -- MUTE MODE --
-      ledframe |= ~(mutemask);
-
-      if (clear_mod) {
-        // SOLO
-        LOOP(i, 16) {
-          if (Input(i).rising())
-            mutemask = ~(1UL << i);
-        }
-
-        // invert mask with TAP
-        if (Input(TAP_FILL_IN).rising())
-          mutemask = ~mutemask;
-        break;
-      }
-      LOOP(i, 16) {
-        // toggle mutes
-        if (Input(i).rising())
-          mutemask ^= (1UL << i);
-      }
-      if (Input(TAP_FILL_IN).rising()) {
-        mutemask = 0; // unmute all!
-      }
-      break;
-
-    case PART1_CODE:
-    case PART2_CODE:
-      if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
-        sequencer_advance();
-
-      if (clear_mod) {
-        // set the last step
-        LOOP(i, 16) {
-          if (Input(i).rising())
-            length[inst_sel] = 1 + i + (variation * 16);
-        }
-        break;
-      }
-      LOOP(i, 16) {
-        // show selected instrument hits
-        if (sequence[i + (variation * 16)] & (1UL << inst_sel))
-          ledframe |= (1UL << i);
-
-        // edit selected instrument hits
-        if (Input(i).rising()) {
-          sequence[i + (variation * 16)] ^= (1UL << inst_sel); // toggle
-        }
-      }
-      break;
-
-    // -- play modes
-    case MANPLAY_CODE:
-    case PLAY_CODE:
-      if (Input(TAP_FILL_IN).rising() && !clk_run && !midi_clk) 
-        sequencer_advance();
-
-      // --- clear a whole drum track
-      if (clear_mod) {
-        LOOP(i, 12) {
-          if (Input(i).rising()) {
-            LOOP(s, MAX_SEQ_STEPS) {
-              sequence[s] &= ~(1UL << i);
-            }
-          }
-        }
-        break;
-      }
-
-      // record hits in realtime
-      LOOP(i, 12) { // each step is one instrument
-        if (Input(i).rising()) {
-          // target the closest step
-          const uint8_t rec_step = (!clk_run || clock_.check_gate(4))
-                               ? step[i]
-                               : ((step[i] + 1) % length[i]);
-          sequence[rec_step] |= (1UL << i);
-          trigmask |= (1UL << i);
-          trig = true;
-        }
-      }
-      break;
-    case COMPOSE_CODE:
-      // unavailable without bodge wire
-      break;
-  }
 
   if (Input(RUN).rising()) {
     clock_reset();
@@ -299,19 +293,41 @@ void loop() {
     clock_reset();
   }
 
+  switch (hw::GetModeSwitch()) {
+    // -- edit modes
+    case PATCLR_CODE:
+      break;
+
+    case PART1_CODE:
+    case PART2_CODE:
+      break;
+
+    // -- play modes
+    case MANPLAY_CODE:
+    case PLAY_CODE:
+      break;
+    case COMPOSE_CODE:
+      // unavailable without bodge wire
+      break;
+  }
+
   // -- Pre-scale switch is UI context layer
   switch (hw::GetPrescale()) {
     case PSCODE_1:
-      // Mutes
+      // Pattern Select
+      ui_patsel_page();
       break;
     case PSCODE_2:
-      // Live Edit
+      // Edit mode
+      ui_stepedit_page();
       break;
     case PSCODE_3:
-      // Live Play
+      // Mutes
+      ui_mute_page();
       break;
     case PSCODE_4:
-      // Pattern Select
+      // Live Play
+      ui_liveplay_page();
       break;
   }
 
@@ -340,6 +356,7 @@ void loop() {
   static elapsedMillis trig_timer = 0;
   if (trig_timer > 1 && trig) {
     hw::Trigger(trigmask);
+    trigview = trigmask;
     trigmask = 0;
     trig = 0;
     trig_timer = 0;
