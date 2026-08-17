@@ -68,16 +68,32 @@ static uint8_t step[INST_COUNT];
 static uint8_t length[INST_COUNT];
 static uint16_t mutemask = 0; // 12-bit mask, but we could use the extra 4...
 static bool reset = 0;
+static uint8_t patsel = 0;
+static uint8_t patsel_next = 0;
 
 EEPROMClass storage;
-static void SAVE() {
+static void SAVE(uint8_t patnum = 0xff) {
+  if (0xff == patnum) patnum = patsel;
+  const size_t offset = patnum * (sizeof(sequence) + sizeof(length));
   hw::SetExtraLeds(true, true);
-  storage.put(0, sequence);
-  storage.put(64, length);
+  storage.put(offset + 0, sequence);
+  storage.put(offset + 64, length);
 }
-static void LOAD() {
-  storage.get(0, sequence);
-  storage.get(64, length);
+static void LOAD(uint8_t patnum = 0) {
+  const size_t offset = patnum * (sizeof(sequence) + sizeof(length));
+  storage.get(offset + 0, sequence);
+  storage.get(offset + 64, length);
+
+  if (length[0] > MAX_SEQ_STEPS) {
+    // WRONG ANSWER, INITIALIZE DEFAULTS
+    LOOP(i, INST_COUNT) {
+      length[i] = 16;
+    }
+    LOOP(i, MAX_SEQ_STEPS) {
+      sequence[i] = 0;
+    }
+  }
+  patsel = patnum;
 }
 
 void sequencer_advance() {
@@ -140,6 +156,7 @@ static void midi_stop_cb() {
   midi_clk = false;
   clk_run = false;
   clock_reset();
+  SAVE();
 }
 static void midi_clock_cb() {
   if (midi_clk) {
@@ -172,16 +189,6 @@ void setup() {
   }
 
   LOAD();
-
-  if (length[0] > MAX_SEQ_STEPS) {
-    // WRONG ANSWER, INITIALIZE DEFAULTS
-    LOOP(i, INST_COUNT) {
-      length[i] = 16;
-    }
-    LOOP(i, MAX_SEQ_STEPS) {
-      sequence[i] = 0;
-    }
-  }
 }
 
 void ui_mute_page() {
@@ -210,6 +217,13 @@ void ui_mute_page() {
   }
 }
 void ui_patsel_page() {
+  ledframe |= (1UL << patsel);
+
+  LOOP(i, 16) {
+    if (Input(i).rising()) {
+      patsel_next = i;
+    }
+  }
 }
 void ui_stepedit_page() {
   // --- STEP EDIT ---
@@ -272,7 +286,6 @@ void loop() {
 
   hw::PollInputsAndSetLeds(ledframe);
   // --- input flags
-  //clk_run = !Input(RUN).off();
   inst_sel = 11 - hw::GetInstSelect();
   // flicker between both for 'AB' mode
   const bool ab_led = Input(ABVAR_BIT0).read() ||
@@ -341,8 +354,16 @@ void loop() {
   } else // the magic that happens in between the clocks... (swing)
     clock_.tick(false);
 
-  if (clock_.trig_pop() && clk_run)
-    sequencer_advance();
+  // check for queued pattern switch
+  if (patsel != patsel_next) {
+    if (!clk_run || 0 == clock_.clk_count) {
+      SAVE();
+      LOAD(patsel_next);
+    }
+  }
+
+  // run it (or consume triggers when RUN is off)
+  if (clock_.trig_pop() && clk_run) sequencer_advance();
 
   // current step LED flashes on beat
   if ((variation && step[inst_sel] >= 16) ||
