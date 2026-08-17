@@ -43,10 +43,10 @@ extern "C" {
 }
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
+
 // --- State ---
 static uint16_t ledframe = 0;
 static bool trig = false;
-static elapsedMillis trig_timer = 0;
 static uint16_t trigmask = 0;
 //static elapsedMicros poll_timer = 0;
 static uint8_t poll_ticks = 0;
@@ -54,11 +54,8 @@ static uint8_t poll_ticks = 0;
 // --clock state
 static bool midi_clk = false;
 static bool clk_run = false;
-static uint8_t clk_count = 0; // for LED flashers
 /*static uint8_t beat_count = 0;*/
 static ClockEngine clock_;
-
-static constexpr uint8_t PPQN = 24;
 
 // --crude sequencer model
 // separate tracks for each instrument?!
@@ -102,13 +99,7 @@ void sequencer_reset() {
 }
 
 // --- Clock ---
-static void clock_advance() {
-  ++clk_count %= PPQN;
-  if (0 == clk_count) clock_.resync();
-  clock_.tick(true);
-}
 static void clock_reset() {
-  clk_count = 0xff;
   clock_.reset();
   sequencer_reset();
 }
@@ -149,7 +140,7 @@ static void midi_stop_cb() {
 }
 static void midi_clock_cb() {
   if (midi_clk) {
-    clock_advance();
+    clock_.tick(true);
   }
 }
 
@@ -193,6 +184,7 @@ void setup() {
 void loop() {
   MIDI.read(); // to trigger callback handlers
 
+
   hw::PollInputsAndSetLeds(ledframe);
   // --- input flags
   //clk_run = !Input(RUN).off();
@@ -207,11 +199,6 @@ void loop() {
   ++poll_ticks;
   ledframe = 0;
 
-
-  // target the closest step - TODO: internal ppqn? query clock engine instead?
-  const uint8_t rec_step = (!clk_run || (clk_count < PPQN / 2))
-                               ? step[inst_sel]
-                               : ((step[inst_sel] + 1) % length[inst_sel]);
 
   switch (hw::GetModeSwitch()) {
     // -- edit modes
@@ -287,8 +274,12 @@ void loop() {
       // record hits in realtime
       LOOP(i, 12) { // each step is one instrument
         if (Input(i).rising()) {
-          trigmask |= (1UL << i);
+          // target the closest step
+          const uint8_t rec_step = (!clk_run || clock_.check_gate(4))
+                               ? step[i]
+                               : ((step[i] + 1) % length[i]);
           sequence[rec_step] |= (1UL << i);
+          trigmask |= (1UL << i);
           trig = true;
         }
       }
@@ -330,21 +321,23 @@ void loop() {
   // --- Clock & Sequencer ---
   const bool clocked = Input(CLOCK).rising_2bit();
   if (!midi_clk && clocked) {
-    // drives LED flashers
-    clock_advance();
-  } else // the magic that happens in between the clocks...
+    clock_.tick(true);
+  } else // the magic that happens in between the clocks... (swing)
     clock_.tick(false);
 
   if (clock_.trig_pop() && clk_run)
     sequencer_advance();
 
   // current step LED flashes on beat
-  if ((variation && step[inst_sel] >= 16) || (!variation && step[inst_sel] < 16)) {
-    if ((clk_count % PPQN) < (PPQN/2)) ledframe ^= (1UL << (step[inst_sel] % 16));
+  if ((variation && step[inst_sel] >= 16) ||
+      (!variation && step[inst_sel] < 16)) {
+    if (clock_.check_gate(4))
+      ledframe ^= (1UL << (step[inst_sel] % 16));
   }
   // -------------------------
 
   // allows a window for simultaneous triggers to gather
+  static elapsedMillis trig_timer = 0;
   if (trig_timer > 1 && trig) {
     hw::Trigger(trigmask);
     trigmask = 0;
