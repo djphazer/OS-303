@@ -62,6 +62,7 @@ static ClockEngine clock_;
 
 // --crude sequencer model
 // separate tracks for each instrument?!
+static constexpr uint8_t PATTERN_COUNT = 16;
 static constexpr uint8_t MAX_SEQ_STEPS = 32;
 static uint16_t sequence[MAX_SEQ_STEPS]; // top 4 bits unused...
 static uint8_t step[INST_COUNT];
@@ -71,26 +72,49 @@ static bool reset = 0;
 static uint8_t patsel = 0;
 static uint8_t patsel_next = 0;
 
+// reserved bytes for config or something
+static constexpr uint32_t SIG_PHZ = 0xbaebae77;
+static constexpr uint8_t SYSTEM_OFFSET = 32;
+static bool valid = false;
 EEPROMClass storage;
 static void SAVE(uint8_t patnum = 0xff) {
   if (0xff == patnum) patnum = patsel;
-  const size_t offset = patnum * (sizeof(sequence) + sizeof(length));
+  const size_t offset = SYSTEM_OFFSET + patnum * (sizeof(sequence) + sizeof(length));
   hw::SetExtraLeds(true, true);
   storage.put(offset + 0, sequence);
   storage.put(offset + 64, length);
 }
+static void CLEAR() {
+  LOOP(i, INST_COUNT) {
+    length[i] = 16;
+  }
+  LOOP(i, MAX_SEQ_STEPS) {
+    sequence[i] = 0;
+  }
+}
+static void VALIDATE() {
+  uint32_t sig;
+  storage.get(0, sig);
+  if (sig != SIG_PHZ) {
+    // uh-oh...
+    CLEAR();
+    LOOP(i, PATTERN_COUNT) SAVE(i);
+    storage.put(0, SIG_PHZ);
+  }
+  valid = true;
+}
 static void LOAD(uint8_t patnum = 0) {
-  const size_t offset = patnum * (sizeof(sequence) + sizeof(length));
+  if (!valid) {
+    VALIDATE();
+  }
+  const size_t offset = SYSTEM_OFFSET + patnum * (sizeof(sequence) + sizeof(length));
   storage.get(offset + 0, sequence);
   storage.get(offset + 64, length);
 
-  if (length[0] > MAX_SEQ_STEPS) {
-    // WRONG ANSWER, INITIALIZE DEFAULTS
-    LOOP(i, INST_COUNT) {
+  LOOP(i, INST_COUNT) {
+    if (length[i] > MAX_SEQ_STEPS) {
+      // invalid lengths get reset to default
       length[i] = 16;
-    }
-    LOOP(i, MAX_SEQ_STEPS) {
-      sequence[i] = 0;
     }
   }
   patsel = patnum;
