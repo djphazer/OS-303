@@ -1137,11 +1137,12 @@ void loop() {
 
   ++ticks;
 
+  DAC::Send();
   // simulate original interrupt timing for DAC update,
   // which will naturally beat against the clock pulses and hopefully evoke the same kind of jitter
-  if (dac_timer > 1800 && (dac_stale || !clk_run)) {
-    DAC::Send();
-    dac_timer = 0;
-    dac_stale = 0;
-  }
+  // if (dac_timer > 1800 && (dac_stale || !clk_run)) {
+  //   DAC::Send();
+  //   dac_timer = 0;
+  //   dac_stale = 0;
+  // }
 }
