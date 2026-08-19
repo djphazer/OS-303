@@ -193,6 +193,13 @@ static void midi_sysex_cb(byte *data, unsigned sz) {
 
 // crucial bits tying together the inputs + engine
 
+uint8_t check_pattern_held() {
+  for (uint8_t i = 0; i < 8; ++i) {
+    if (!inputs[i].off())
+      return i + 1;
+  }
+  return 0;
+}
 uint8_t check_pitch_held() {
   for (uint8_t i = 0; i < ARRAY_SIZE(pitched_keys); ++i) {
     if (!inputs[pitched_keys[i]].off()) {
@@ -1009,7 +1016,7 @@ void loop() {
 
   // -=-=- Process inputs and set LEDs -=-=-
 
-  uint8_t pitchhold = check_pitch_held();
+  bool play_pattern = check_pattern_held();
 
   switch (get_mode()) {
     default:
@@ -1019,6 +1026,7 @@ void loop() {
         // Flash lights for modifiers
         if (pitch_mod) {
           ProcessPitchMod();
+          play_pattern = check_pitch_held();
         } else if (time_mod) {
           Leds::Set(TIME_MODE_LED, MED_FLASH);
           // TODO: performance time effects
@@ -1032,15 +1040,15 @@ void loop() {
 
     case MENU_CONFIG:
       ProcessConfigMenu();
-      pitchhold = 0;
+      play_pattern = 0;
       break;
     case MENU_PITCH:
       ProcessPitchMenu();
-      pitchhold = 0;
+      play_pattern = 0;
       break;
     case MENU_TIME:
       ProcessTimeMenu();
-      pitchhold = 0;
+      play_pattern = 0;
       break;
   }
 
@@ -1054,22 +1062,24 @@ void loop() {
   }
 
   // actual engine Clock
-  const bool performing = !perform_mode || (pitchhold && !beat_reset);
-  if (clocked && clk_run && performing) {
-    if (engine.Clock(track_mode)) {
-      const bool sync_to_pattern = GlobalSettings.Get(SETTING_PATTERN_SYNC);
-      const bool ready = (sync_to_pattern && engine.get_time_pos() == 0) || sync_ready;
-      if (ready) {
-        // pattern-synced changes here
-        // todo: consider moving this into the engine?
-        transpose = transpose_next;
-        if (tracknum != track_loaded)
-          SwitchToTrack();
+  const bool performing = !perform_mode || (play_pattern && !beat_reset);
+  if (clk_run && performing) {
+    if (clocked) {
+      if (engine.Clock(track_mode)) {
+        const bool sync_to_pattern = GlobalSettings.Get(SETTING_PATTERN_SYNC);
+        const bool ready = (sync_to_pattern && engine.get_time_pos() == 0) || sync_ready;
+        if (ready) {
+          // pattern-synced changes here
+          // todo: consider moving this into the engine?
+          transpose = transpose_next;
+          if (tracknum != track_loaded)
+            SwitchToTrack();
+        }
       }
-    }
-    dac_stale = true;
-  } else if (clk_run)
-    engine.trig_check(false);
+      dac_stale = true;
+    } else // magic in between clocks
+      engine.trig_check(false);
+  }
 
   // increment clock counter after everything else
   if (clocked) {
