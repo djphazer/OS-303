@@ -25,6 +25,7 @@
 #include <Arduino.h>
 #include <MIDI.h>
 #include "drivers.h"
+#include "../clock.h"
 
 #ifndef DEBUG
 #define DEBUG 0
@@ -39,8 +40,40 @@ extern "C" {
   }
 }
 
+// --- State ---
+static uint16_t ledframe = 0;
+static bool trig = false;
+static elapsedMillis trig_timer = 0;
+static uint16_t trigmask = 0;
+static elapsedMicros poll_timer = 0;
+static uint8_t poll_ticks = 0;
+
+// --clock state
+static bool midi_clk = false;
+static bool clk_run = false;
+static ClockEngine clock_;
+
+// crude sequencer model
+static constexpr uint8_t MAX_SEQ_STEPS = 32;
+static uint8_t sequence[MAX_SEQ_STEPS];
+static uint8_t step = 0;
+static bool reset = 0;
+
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
+// --- MIDI Callbacks ---
+static void midi_note_off(uint8_t chan, uint8_t note, uint8_t vel) {
+  // todo?
+}
+static void midi_note_on(uint8_t chan, uint8_t note, uint8_t vel) {
+  LOOP(i, ARRAY_SIZE(INST_NOTE)) {
+    if (note == INST_NOTE[i]) {
+      trig = true;
+      trigmask |= (1UL << i);
+      if (vel > 63) trigmask |= 1; // accent
+    }
+  }
+}
 static void midi_sysex_cb(byte *data, unsigned sz) {
   // yeah, we're only looking for a very specific type of individual...
   if (sz < 4 || data[0] != 0xF0 || data[1] != 0x7D || data[sz - 1] != 0xF7)
@@ -49,13 +82,32 @@ static void midi_sysex_cb(byte *data, unsigned sz) {
   // special command to initiate flash update
   if (0x4A == data[2]) { jumptoboot(); }
 }
+static void midi_start_cb() {
+  midi_clk = true;
+  clk_run = true;
+  clock_.reset();
+}
+static void midi_stop_cb() {
+  midi_clk = false;
+  clk_run = false;
+  clock_.reset();
+  //SAVE();
+}
+static void midi_clock_cb() {
+  if (midi_clk) {
+    clock_.tick(true);
+  }
+}
 
 void setup() {
   Serial1.begin(31250);
   MIDI.begin(MIDI_CHANNEL_OMNI);
-  // MIDI.setHandleNoteOn(midi_note_on);
-  // MIDI.setHandleNoteOff(midi_note_off);
+  MIDI.setHandleNoteOn(midi_note_on);
+  MIDI.setHandleNoteOff(midi_note_off);
   MIDI.setHandleSystemExclusive(midi_sysex_cb);
+  MIDI.setHandleClock(midi_clock_cb);
+  MIDI.setHandleStart(midi_start_cb);
+  MIDI.setHandleStop(midi_stop_cb);
 
   hw::Init();
 
@@ -70,23 +122,6 @@ void setup() {
     }
   }
 }
-
-// --- State ---
-static uint16_t ledframe = 0;
-static bool trig = false;
-static elapsedMillis trig_timer = 0;
-static uint16_t trigmask = 0;
-static elapsedMicros poll_timer = 0;
-static uint8_t poll_ticks = 0;
-
-// crude sequencer model
-static constexpr uint8_t MAX_SEQ_STEPS = 32;
-static uint8_t ppqn = 12;
-static uint8_t clk_count = 0;
-static uint8_t beat_count = 0;
-static uint8_t sequence[MAX_SEQ_STEPS];
-static uint8_t step = 0;
-static bool reset = 0;
 
 // util
 const PinState &Input(uint8_t i) { return hw::inputs[i]; }
@@ -104,14 +139,13 @@ void loop() {
   //}
 
   // --- input flags
-  const bool clocked = Input(CLOCK).rising();
-  const bool clk_run = !Input(RUN).off();
+  clk_run = !Input(RUN).off();
   const bool clear_mod = Input(CLEAR_KEY).held();
   const uint8_t inst_sel = hw::GetInstSelect();
 
   // target the closest step
   const uint8_t rec_step =
-      (!clk_run || (clk_count < ppqn / 2)) ? step : (step + 1) % MAX_SEQ_STEPS;
+      (!clk_run || clock_.check_gate()) ? step : (step + 1) % MAX_SEQ_STEPS;
 
   bool editmode = Input(WRITE_MODE).held();
   if (editmode) {
@@ -154,43 +188,46 @@ void loop() {
   if (Input(RUN).rising() || Input(RUN).falling()) {
     step = 0;
     reset = true;
+    clock_.reset();
   }
 
   if (Input(CLEAR_KEY).rising()) {
     switch (hw::GetPrescale()) {
       case PSCODE_1:
-        ppqn = 8;
+        // TODO
         break;
       case PSCODE_2:
-        ppqn = 4;
+        // TODO
         break;
       case PSCODE_3:
-        ppqn = 12;
+        // TODO
         break;
       case PSCODE_4:
-        ppqn = 6;
+        // TODO
         break;
     }
   }
 
   // --- Clock & Sequencer ---
-  if (clocked) {
-    if (clk_run && 0 == clk_count) {
-      ++beat_count;
-      // advance sequencer
-      if (reset) reset = false;
-      else ++step %= MAX_SEQ_STEPS;
+  const bool clocked = Input(CLOCK).rising_2bit();
+  if (!midi_clk && clocked) {
+    clock_.tick(true);
+  } else // the magic that happens in between the clocks... (swing)
+    clock_.tick(false);
 
-      trigmask |= sequence[step];
-      trig = true;
-    }
+  // run it (or consume triggers when RUN is off)
+  if (clock_.trig_pop() && clk_run) {
+    //sequencer_advance();
+    // advance sequencer
+    if (reset) reset = false;
+    else ++step %= MAX_SEQ_STEPS;
 
-    // advance counter last
-    ++clk_count %= ppqn;
+    trigmask |= sequence[step];
+    trig = true;
   }
 
   // current step LED flashes on beat
-  if (clk_count < ppqn/2) ledframe |= (1UL << step);
+  if (clock_.check_gate()) ledframe |= (1UL << step);
   // -------------------------
 
   // allows a window for simultaneous triggers to gather
