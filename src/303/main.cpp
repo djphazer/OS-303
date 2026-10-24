@@ -27,6 +27,7 @@
 #include "pins.h"
 #include "drivers.h"
 #include "engine.h"
+#include "eeprom_restore.h"
 
 #ifndef DEBUG
 #define DEBUG 0
@@ -180,14 +181,299 @@ static void midi_note_on(byte channel, byte pitch, byte velocity) {
   midi_live_note   = static_cast<uint8_t>(pitch);
   dac_stale = true;
 }
+
+// Pack arbitrary 8-bit EEPROM bytes into MIDI-safe 7-bit data. Each group of
+// up to seven bytes starts with a bitmap containing their original high bits.
+static uint8_t pack_7bit(const uint8_t *src, uint8_t len, uint8_t *dst) {
+  uint8_t written = 0;
+  while (len) {
+    const uint8_t group_len = len < 7 ? len : 7;
+    uint8_t high_bits = 0;
+    const uint8_t mask_pos = written++;
+    for (uint8_t i = 0; i < group_len; ++i) {
+      high_bits |= ((src[i] >> 7) & 1) << i;
+      dst[written++] = src[i] & 0x7F;
+    }
+    dst[mask_pos] = high_bits;
+    src += group_len;
+    len -= group_len;
+  }
+  return written;
+}
+
+static bool unpack_7bit(const uint8_t *src, uint8_t packed_len,
+                        uint8_t *dst, uint8_t expected_len) {
+  uint8_t read = 0;
+  uint8_t written = 0;
+  while (written < expected_len) {
+    if (read >= packed_len)
+      return false;
+    const uint8_t high_bits = src[read++];
+    const uint8_t group_len = expected_len - written < 7
+                            ? expected_len - written : 7;
+    for (uint8_t bit = 0; bit < group_len; ++bit) {
+      if (read >= packed_len)
+        return false;
+      dst[written++] = src[read++] | (((high_bits >> bit) & 1) << 7);
+    }
+  }
+  return read == packed_len;
+}
+
+static bool restore_mode_active = false;
+static EepromRestoreProtocol::Session<EEPROMClass> restore(storage);
+
+static void send_restore_status(EepromRestoreProtocol::Status status) {
+  const uint8_t reply[] = {0x7D, 0x5B, status,
+                           static_cast<uint8_t>(restore.received() & 0x7F),
+                           static_cast<uint8_t>(restore.received() >> 7)};
+  MIDI.sendSysEx(sizeof(reply), reply);
+}
+
+static void reject_restore(EepromRestoreProtocol::Status status) {
+  if (restore.error() < EepromRestoreProtocol::ERR_BEGIN)
+    send_restore_status(restore.Reject(status));
+}
+
+static void handle_restore_sysex(byte *data, unsigned sz) {
+  namespace Restore = EepromRestoreProtocol;
+  if (sz < 4 || data[0] != 0xF0 || data[1] != 0x7D
+      || data[sz - 1] != 0xF7)
+    return;
+
+  if (data[2] == 0x58) {
+    // F0 7D 58 <version> <size-lo7> <size-hi7> <packed-crc32:5> F7
+    uint8_t crc_bytes[4];
+    if (sz != 12 || data[3] != Restore::VERSION
+        || !unpack_7bit(data + 6, 5, crc_bytes, 4)) {
+      reject_restore(Restore::ERR_BEGIN);
+      return;
+    }
+    const uint16_t image_size = data[4] | (uint16_t(data[5]) << 7);
+    if (image_size != Restore::IMAGE_SIZE) {
+      reject_restore(Restore::ERR_BEGIN);
+      return;
+    }
+    const uint32_t expected_crc = uint32_t(crc_bytes[0])
+                                | (uint32_t(crc_bytes[1]) << 8)
+                                | (uint32_t(crc_bytes[2]) << 16)
+                                | (uint32_t(crc_bytes[3]) << 24);
+    send_restore_status(restore.Begin(expected_crc));
+    return;
+  }
+
+  if (data[2] == 0x59) {
+    // F0 7D 59 <addr-lo7> <addr-hi7> 20 <packed-data:37>
+    //          <packed-crc16:3> F7
+    uint8_t raw[Restore::CHUNK_SIZE];
+    uint8_t crc_bytes[2];
+    if (sz != 47 || data[5] != Restore::CHUNK_SIZE
+        || !unpack_7bit(data + 6, 37, raw, Restore::CHUNK_SIZE)
+        || !unpack_7bit(data + 43, 3, crc_bytes, 2)) {
+      reject_restore(Restore::ERR_DATA);
+      return;
+    }
+    const uint16_t addr = data[3] | (uint16_t(data[4]) << 7);
+    const uint16_t supplied_crc = crc_bytes[0] | (uint16_t(crc_bytes[1]) << 8);
+    const bool was_ready = restore.error() < Restore::ERR_BEGIN;
+    const Restore::Status status = restore.AcceptChunk(addr, raw, supplied_crc);
+    if (was_ready && status >= Restore::ERR_BEGIN)
+      send_restore_status(status);
+    return;
+  }
+
+  if (data[2] == 0x5A) {
+    // F0 7D 5A <packed-crc32:5> F7
+    uint8_t crc_bytes[4];
+    if (sz != 9 || !unpack_7bit(data + 3, 5, crc_bytes, 4)) {
+      reject_restore(Restore::ERR_DATA);
+      return;
+    }
+    const uint32_t supplied_crc = uint32_t(crc_bytes[0])
+                                | (uint32_t(crc_bytes[1]) << 8)
+                                | (uint32_t(crc_bytes[2]) << 16)
+                                | (uint32_t(crc_bytes[3]) << 24);
+    if (restore.error() < Restore::ERR_BEGIN)
+      send_restore_status(restore.Commit(supplied_crc));
+  }
+}
+
+static void send_eeprom_chunk(uint16_t addr, uint8_t count) {
+  namespace Restore = EepromRestoreProtocol;
+  if (clk_run || count == 0 || count > Restore::CHUNK_SIZE
+      || addr >= Restore::IMAGE_SIZE)
+    return;
+
+  if (addr + count > Restore::IMAGE_SIZE)
+    count = static_cast<uint8_t>(Restore::IMAGE_SIZE - addr);
+
+  uint8_t raw[Restore::CHUNK_SIZE];
+  for (uint8_t i = 0; i < count; ++i)
+    raw[i] = storage.read(addr + i);
+
+  // F0/F7 are added by MIDI.sendSysEx(). The reply is compatible with the
+  // read-only EEPROM command in SuperOS-303:
+  //   F0 7D 57 <addr-lo7> <addr-hi7> <count> <packed data...> F7
+  uint8_t reply[5 + 37];
+  reply[0] = 0x7D;
+  reply[1] = 0x57;
+  reply[2] = addr & 0x7F;
+  reply[3] = (addr >> 7) & 0x7F;
+  reply[4] = count;
+  const uint8_t packed_len = pack_7bit(raw, count, reply + 5);
+  MIDI.sendSysEx(5 + packed_len, reply);
+}
+
+static void set_dump_leds(uint8_t count, bool enable = true) {
+  for (uint8_t i = 0; i < 8; ++i)
+    Leds::Set(static_cast<OutputIndex>(i), enable && i < count);
+}
+
+static void refresh_dump_leds(uint8_t frames = 1) {
+  for (uint8_t frame = 0; frame < frames; ++frame) {
+    for (uint8_t i = 0; i < 4; ++i) {
+      Leds::Send(false);
+      delay(1);
+    }
+  }
+}
+
+static void wait_for_eeprom_dump_trigger() {
+  // All eight numbered pattern LEDs distinguish armed backup mode from the
+  // firmware bootloader, which lights PITCH, TIME, FUNCTION and A# instead.
+  set_dump_leds(8);
+
+  // Require release of the power-on press, then a fresh BACK tap. This gives
+  // the user unlimited time to arm a SysEx recorder without losing the start.
+  while (!inputs[BACK_KEY].off()) {
+    PollInputs(inputs);
+    refresh_dump_leds();
+  }
+  while (true) {
+    PollInputs(inputs);
+    refresh_dump_leds();
+    if (inputs[BACK_KEY].rising())
+      return;
+  }
+}
+
+static void send_full_eeprom_dump() {
+  namespace Restore = EepromRestoreProtocol;
+  static constexpr uint8_t CHUNKS_PER_LED = Restore::CHUNK_COUNT / 8;
+
+  wait_for_eeprom_dump_trigger();
+
+  for (uint16_t addr = 0; addr < Restore::IMAGE_SIZE;
+       addr += Restore::CHUNK_SIZE) {
+    const uint8_t chunk = addr / Restore::CHUNK_SIZE;
+    const uint8_t active_led = chunk / CHUNKS_PER_LED;
+    const uint8_t segment_pos = chunk % CHUNKS_PER_LED;
+
+    // Completed 12.5% segments stay solid. The active segment blinks once,
+    // then becomes solid when its sixteen chunks have been transmitted.
+    set_dump_leds(active_led);
+    if (segment_pos < CHUNKS_PER_LED / 2)
+      Leds::Set(static_cast<OutputIndex>(active_led), true);
+
+    send_eeprom_chunk(addr, Restore::CHUNK_SIZE);
+    refresh_dump_leds();
+  }
+
+  // Flash the completed eight-LED bar together three times.
+  for (uint8_t flash = 0; flash < 3; ++flash) {
+    set_dump_leds(8);
+    refresh_dump_leds(30);
+    set_dump_leds(0);
+    refresh_dump_leds(20);
+  }
+}
+
+static void show_restore_ready(uint16_t frame) {
+  for (uint8_t i = 0; i < 8; ++i)
+    Leds::Set(static_cast<OutputIndex>(i), ((i + (frame >> 8)) & 1) == 0);
+  Leds::Set(TIME_MODE_LED, true);
+  Leds::Set(PITCH_MODE_LED, false);
+  Leds::Set(FUNCTION_MODE_LED, false);
+}
+
+static void run_restore_mode() {
+  namespace Restore = EepromRestoreProtocol;
+  restore_mode_active = true;
+  MIDI.turnThruOff();
+
+  // Require release of the power-on chord before accepting the restore file.
+  while (!inputs[TIME_KEY].off() || !inputs[BACK_KEY].off()) {
+    PollInputs(inputs);
+    show_restore_ready(0);
+    refresh_dump_leds();
+  }
+
+  uint16_t frame = 0;
+  while (!restore.finished()) {
+    // Default MIDI settings parse one byte per read() call and return false
+    // until a complete message is assembled. Draining on read()'s return value
+    // therefore consumes only one byte per LED refresh and can overflow the
+    // UART buffer while EEPROM writes are in progress. Drain every byte that
+    // has already arrived instead.
+    while (Serial1.available())
+      MIDI.read();
+    PollInputs(inputs);
+
+    if (restore.error() >= Restore::ERR_BEGIN) {
+      set_dump_leds(0);
+      Leds::Set(static_cast<OutputIndex>((frame >> 7) & 7), true);
+      Leds::Set(TIME_MODE_LED, false);
+      Leds::Set(FUNCTION_MODE_LED, true);
+    } else if (!restore.begun()) {
+      show_restore_ready(frame);
+    } else {
+      const uint8_t complete_leds = restore.received() / 16;
+      set_dump_leds(complete_leds);
+      if (complete_leds < 8 && (frame & 0x80))
+        Leds::Set(static_cast<OutputIndex>(complete_leds), true);
+      Leds::Set(TIME_MODE_LED, true);
+      Leds::Set(PITCH_MODE_LED, false);
+      Leds::Set(FUNCTION_MODE_LED, false);
+    }
+    refresh_dump_leds();
+    ++frame;
+  }
+
+  for (uint8_t flash = 0; flash < 3; ++flash) {
+    set_dump_leds(8);
+    refresh_dump_leds(30);
+    set_dump_leds(0);
+    refresh_dump_leds(20);
+  }
+  Leds::Set(TIME_MODE_LED, false);
+  Leds::Set(FUNCTION_MODE_LED, false);
+  restore_mode_active = false;
+  MIDI.turnThruOn(midi::Thru::Full);
+}
+
 static void midi_sysex_cb(byte *data, unsigned sz) {
-  // yeah, we're only looking for a very specific type of individual...
+  // OS-303 commands use the non-commercial SysEx manufacturer ID.
   if (sz < 4 || data[0] != 0xF0 || data[1] != 0x7D || data[sz - 1] != 0xF7)
     return;
+
+  // EEPROM writes are recognized only inside the explicit power-on restore
+  // mode. Playing a restore file during normal operation is harmless.
+  if (restore_mode_active) {
+    handle_restore_sysex(data, sz);
+    return;
+  }
 
   // special command to initiate flash update
   if (0x4A == data[2]) {
     jumptoboot();
+  }
+
+  // Read up to 32 bytes of internal EEPROM. This is deliberately read-only:
+  // a dropped or malformed MIDI message can never alter stored patterns.
+  // Request: F0 7D 56 <addr-lo7> <addr-hi7> <count> F7
+  if (0x56 == data[2] && sz >= 7) {
+    const uint16_t addr = data[3] | (uint16_t(data[4]) << 7);
+    send_eeprom_chunk(addr, data[5]);
   }
 }
 
@@ -400,7 +686,23 @@ void setup() {
   PollInputs(inputs);
   PollInputs(inputs);
 
-  if (inputs[TAP_NEXT].held()) {
+  // An interrupted restore returns here automatically. TIME + BACK explicitly
+  // enters restore; BACK alone enters read-only backup; WRITE/NEXT alone keeps
+  // the firmware-update shortcut. WRITE/NEXT also remains an emergency escape
+  // to the bootloader when a recovery marker is present.
+  const bool recovery_required = restore.MarkerPresent();
+  if (inputs[TIME_KEY].held() && inputs[BACK_KEY].held()) {
+    run_restore_mode();
+  } else if (recovery_required && inputs[TAP_NEXT].held()
+             && inputs[BACK_KEY].off()) {
+    jumptoboot();
+  } else if (recovery_required) {
+    run_restore_mode();
+  } else if (inputs[BACK_KEY].held()) {
+    MIDI.turnThruOff();
+    send_full_eeprom_dump();
+    MIDI.turnThruOn(midi::Thru::Full);
+  } else if (inputs[TAP_NEXT].held()) {
     jumptoboot();
   }
 

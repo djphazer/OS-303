@@ -3,6 +3,7 @@ compile_commands.json
 .cache
 *.hex
 *.syx
+*.bin
 __pycache__
 .DS_Store
 *.swp

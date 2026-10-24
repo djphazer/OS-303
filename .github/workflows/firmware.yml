@@ -33,6 +33,12 @@ jobs:
         pip3 install --upgrade pip
         pip3 install -r .github/workflows/requirements.txt
 
+    - name: Test backup and restore protocols
+      run: |
+        python3 -m unittest discover -s tools -p 'test_*.py'
+        c++ -std=c++11 -Wall -Wextra -Werror tools/test_eeprom_restore.cpp -o /tmp/test_eeprom_restore
+        /tmp/test_eeprom_restore
+
     - name: Build firmware
       working-directory: .
       run: |
